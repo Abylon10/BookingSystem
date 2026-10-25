@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package biliran.booking.v1;
+
+// Served by every island node. Central is the client.
+service IslandService {
+  // Search fan-out: central calls all islands in parallel.
+  rpc GetCatalog(CatalogRequest) returns (CatalogReply);
+  rpc GetAvailability(AvailabilityRequest) returns (AvailabilityReply);
+  // Lets the island's desk recognise an online ticket before it is scanned.
+  rpc RegisterOnlineBooking(OnlineBooking) returns (Ack);
+  rpc CancelOnlineBooking(CancelRequest) returns (Ack);
+  // Rebalance: move unsold units between the walk-in pool and the online pool.
+  rpc TransferAllotment(TransferRequest) returns (TransferReply);
+  rpc Ping(PingRequest) returns (PingReply);
+}
+
+// Served by central. Islands are the clients.
+service CentralService {
+  // Island outbox -> central. Events are deduplicated by event_id.
+  rpc PushEvents(EventBatch) returns (EventAck);
+}
+
+message Listing {
+  string id = 1;
+  string island_id = 2;
+  string kind = 3;          // "resort" | "tour"
+  string name = 4;
+  string location = 5;
+  string description = 6;
+  int32 price_php = 7;      // per night (resort) or per person (tour)
+  repeated string facilities = 8;
+  string image = 9;
+}
+
+message CatalogRequest {}
+message CatalogReply {
+  string island_id = 1;
+  repeated Listing listings = 2;
+}
+
+message AvailabilityRequest {
+  string listing_id = 1;
+  string from_date = 2;     // YYYY-MM-DD
+  int32 days = 3;
+}
+message DayAvailability {
+  string date = 1;
+  int32 walkin_available = 2;
+}
+message AvailabilityReply {
+  string listing_id = 1;
+  repeated DayAvailability days = 2;
+}
+
+message OnlineBooking {
+  string booking_id = 1;
+  string listing_id = 2;
+  string date = 3;          // check-in / tour date
+  int32 nights = 4;         // 1 for tours
+  int32 qty = 5;            // rooms or seats
+  string guest_name = 6;
+  string id_type = 7;
+  string id_last4 = 8;
+  string code = 9;          // BK-XXXX-YYYY
+}
+
+message CancelRequest {
+  string booking_id = 1;
+}
+
+message Ack {
+  bool ok = 1;
+  string message = 2;
+}
+
+message TransferRequest {
+  string request_id = 1;    // idempotency key
+  string listing_id = 2;
+  string date = 3;
+  int32 qty = 4;
+  string direction = 5;     // "to_online" | "to_walkin"
+}
+message TransferReply {
+  bool ok = 1;
+  int32 walkin_available = 2;
+  string message = 3;
+}
+
+message PingRequest {}
+message PingReply {
+  string island_id = 1;
+  int64 server_time_ms = 2;
+}
+
+message Event {
+  string event_id = 1;      // uuid, unique per event
+  string island_id = 2;
+  string type = 3;          // "WALKIN_BOOKED" | "REDEEMED" | "CANCELLED" | ...
+  string booking_id = 4;
+  string payload_json = 5;
+  int64 created_at_ms = 6;
+}
+message EventBatch {
+  repeated Event events = 1;
+}
+message EventAck {
+  repeated string accepted_event_ids = 1;
+}

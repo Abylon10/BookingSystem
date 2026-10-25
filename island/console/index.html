@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Island Front Desk</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1 id="island-name">Island</h1>
+      <p class="muted">Front desk console</p>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="partition">
+      <span>Disconnect from Central</span>
+    </label>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Today's walk-in availability</h2>
+      <p class="muted" id="sync-status"></p>
+      <ul id="listings" class="listings"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Check in (code or QR)</h2>
+      <form id="verify-form">
+        <input id="code" placeholder="BK-XXXX-YYYY" autocomplete="off" required>
+        <button type="submit">Verify</button>
+      </form>
+      <div id="verify-result"></div>
+    </section>
+
+    <section class="card">
+      <h2>Walk-in booking</h2>
+      <form id="walkin-form" class="grid">
+        <select id="w-listing" required></select>
+        <input id="w-day" type="date" required>
+        <input id="w-nights" type="number" min="1" value="1" title="Nights (resort)">
+        <input id="w-qty" type="number" min="1" value="1" title="Rooms / seats">
+        <input id="w-name" placeholder="Guest name" required>
+        <select id="w-idtype">
+          <option>PhilSys ID</option><option>Passport</option><option>Driver's License</option><option>Student ID</option>
+        </select>
+        <input id="w-last4" placeholder="ID last 4 digits" pattern="\d{4}" required>
+        <button type="submit">Book</button>
+      </form>
+      <div id="walkin-result"></div>
+    </section>
+
+    <section class="card wide">
+      <h2>Recent bookings</h2>
+      <table>
+        <thead><tr><th>Code</th><th>Source</th><th>Listing</th><th>Date</th><th>Guest</th><th>Status</th></tr></thead>
+        <tbody id="bookings"></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

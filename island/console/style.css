@@ -1,0 +1,64 @@
+:root {
+  --ink: #12212E;
+  --primary: #307082;
+  --secondary: #6CA3A2;
+  --sand: #ECE7DC;
+  --accent: #EA9940;
+  --card: #ffffff;
+  --muted: #5b6b75;
+  --danger: #b4432f;
+  --ok: #2f7d5b;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--sand);
+  color: var(--ink);
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--primary);
+  color: #fff;
+}
+header h1 { margin: 0; font-size: 1.4rem; }
+header .muted { color: #d6e6ea; margin: 2px 0 0; }
+.toggle { display: flex; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; }
+.toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+.card { background: var(--card); border-radius: 14px; padding: 16px 20px; }
+.card.wide { grid-column: 1 / -1; overflow-x: auto; }
+h2 { font-size: 1.05rem; margin: 0 0 12px; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+
+.listings { list-style: none; padding: 0; margin: 0; }
+.listings li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--sand); }
+.price { color: var(--accent); font-weight: 700; }
+
+form { display: flex; gap: 8px; flex-wrap: wrap; }
+form.grid { display: grid; grid-template-columns: 1fr 1fr; }
+input, select, button { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid #cfd8d6; }
+input, select { background: #fbfaf7; color: var(--ink); min-width: 0; }
+button { background: var(--primary); color: #fff; border: none; font-weight: 600; cursor: pointer; }
+button.confirm { background: var(--accent); color: var(--ink); }
+
+.result { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--sand); }
+.result.ok { border-left: 4px solid var(--ok); }
+.result.bad { border-left: 4px solid var(--danger); }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sand); white-space: nowrap; }
+.badge { padding: 2px 8px; border-radius: 999px; background: var(--secondary); color: #fff; font-size: 0.8rem; }
+.badge.REDEEMED { background: var(--ok); }
+.badge.CANCELLED { background: var(--danger); }

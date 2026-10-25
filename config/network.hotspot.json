@@ -1,0 +1,8 @@
+{
+  "central": { "host": "192.168.43.10", "httpPort": 4000, "grpcPort": 50050 },
+  "islands": [
+    { "id": "biliran", "host": "192.168.43.11", "httpPort": 8081, "grpcPort": 50051 },
+    { "id": "maripipi", "host": "192.168.43.12", "httpPort": 8082, "grpcPort": 50052 },
+    { "id": "higatangan", "host": "192.168.43.13", "httpPort": 8083, "grpcPort": 50053 }
+  ]
+}

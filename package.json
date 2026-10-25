@@ -1,0 +1,31 @@
+{
+  "name": "biliran-booking-system",
+  "private": true,
+  "type": "module",
+  "description": "Parallel & distributed booking system for Biliran resorts and tours",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "central": "node --env-file-if-exists=.env central/server.ts",
+    "central:seed": "node --env-file-if-exists=.env central/seed.ts",
+    "island": "node --env-file-if-exists=.env island/server.ts",
+    "island:biliran": "node --env-file-if-exists=.env island/server.ts biliran",
+    "island:maripipi": "node --env-file-if-exists=.env island/server.ts maripipi",
+    "island:higatangan": "node --env-file-if-exists=.env island/server.ts higatangan",
+    "test:race": "node --env-file-if-exists=.env loadtest/race.ts",
+    "test:search": "node --env-file-if-exists=.env loadtest/search.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "@supabase/supabase-js": "^2.45.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

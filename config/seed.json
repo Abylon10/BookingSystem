@@ -1,0 +1,90 @@
+{
+  "inventoryDays": 60,
+  "onlineShare": 0.3,
+  "islands": [
+    {
+      "id": "biliran",
+      "name": "Biliran Mainland",
+      "listings": [
+        {
+          "id": "biliran-lagundi-bay",
+          "kind": "resort",
+          "name": "Lagundi Bay Resort",
+          "location": "Almeria, Biliran",
+          "description": "Beachfront cottages facing the Samar Sea, a short drive from Agta Beach.",
+          "pricePhp": 2800,
+          "capacity": 10,
+          "facilities": ["Wi-Fi", "Restaurant", "Parking", "Beach access"],
+          "image": "lagundi-bay"
+        },
+        {
+          "id": "biliran-falls-trek",
+          "kind": "tour",
+          "name": "Tinago & Ulan-Ulan Falls Trek",
+          "location": "Caibiran, Biliran",
+          "description": "Guided day trek to Tinago Falls and Ulan-Ulan Falls with a stop at Mainit Hot Spring.",
+          "pricePhp": 950,
+          "capacity": 20,
+          "facilities": ["Guide", "Lunch", "Van transfer"],
+          "image": "falls-trek"
+        }
+      ]
+    },
+    {
+      "id": "maripipi",
+      "name": "Maripipi Island",
+      "listings": [
+        {
+          "id": "maripipi-dagami-reef",
+          "kind": "resort",
+          "name": "Dagami Reef Cottages",
+          "location": "Maripipi, Biliran",
+          "description": "Native-style cottages at the foot of Maripipi volcano, near the Sambawan boat landing.",
+          "pricePhp": 2200,
+          "capacity": 8,
+          "facilities": ["Restaurant", "Snorkel gear", "Generator"],
+          "image": "dagami-reef"
+        },
+        {
+          "id": "maripipi-sambawan-hopping",
+          "kind": "tour",
+          "name": "Sambawan Island Hopping & Snorkel",
+          "location": "Sambawan Islets, Maripipi",
+          "description": "Boat tour to the Sambawan islets: hilltop viewpoint, coral garden snorkel and white sand.",
+          "pricePhp": 1500,
+          "capacity": 24,
+          "facilities": ["Boat", "Snorkel gear", "Lunch", "Life vests"],
+          "image": "sambawan"
+        }
+      ]
+    },
+    {
+      "id": "higatangan",
+      "name": "Higatangan Island",
+      "listings": [
+        {
+          "id": "higatangan-sandbar-inn",
+          "kind": "resort",
+          "name": "Higatangan Sandbar Inn",
+          "location": "Higatangan, Naval, Biliran",
+          "description": "Quiet inn beside the shifting sandbar, a pump-boat ride from Naval port.",
+          "pricePhp": 1900,
+          "capacity": 8,
+          "facilities": ["Restaurant", "Kayaks", "Generator"],
+          "image": "sandbar-inn"
+        },
+        {
+          "id": "higatangan-rock-tour",
+          "kind": "tour",
+          "name": "Higatangan Rock Formations & Sandbar Tour",
+          "location": "Higatangan, Naval, Biliran",
+          "description": "Walk the limestone rock formations, climb to the island viewpoint and swim at the sandbar.",
+          "pricePhp": 800,
+          "capacity": 20,
+          "facilities": ["Guide", "Pump boat", "Snacks"],
+          "image": "rock-tour"
+        }
+      ]
+    }
+  ]
+}
