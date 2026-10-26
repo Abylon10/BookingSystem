@@ -1,4 +1,9 @@
 <!doctype html>
+<!--
+  island/console/index.html
+  Front desk console for one island. Served by island/server.ts at http://localhost:<httpPort>.
+  Behaviour lives in app.js, colours in style.css.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -7,6 +12,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Header: island name (filled by app.js) and the "Disconnect from Central" partition switch -->
   <header>
     <div>
       <h1 id="island-name">Island</h1>
@@ -19,12 +25,14 @@
   </header>
 
   <main>
+    <!-- Walk-in units left today per listing, plus how many events are waiting to sync to central -->
     <section class="card">
       <h2>Today's walk-in availability</h2>
       <p class="muted" id="sync-status"></p>
       <ul id="listings" class="listings"></ul>
     </section>
 
+    <!-- Check-in: type a BK code (or paste a QR payload), verify it, then confirm after checking the ID -->
     <section class="card">
       <h2>Check in (code or QR)</h2>
       <form id="verify-form">
@@ -34,6 +42,7 @@
       <div id="verify-result"></div>
     </section>
 
+    <!-- Face-to-face booking from this island's walk-in pool -->
     <section class="card">
       <h2>Walk-in booking</h2>
       <form id="walkin-form" class="grid">
@@ -45,12 +54,14 @@
         <select id="w-idtype">
           <option>PhilSys ID</option><option>Passport</option><option>Driver's License</option><option>Student ID</option>
         </select>
+        <!-- Only the last 4 digits of the ID are recorded, never the full number -->
         <input id="w-last4" placeholder="ID last 4 digits" pattern="\d{4}" required>
         <button type="submit">Book</button>
       </form>
       <div id="walkin-result"></div>
     </section>
 
+    <!-- The 100 most recent bookings (walk-in and online) with their status -->
     <section class="card wide">
       <h2>Recent bookings</h2>
       <table>
