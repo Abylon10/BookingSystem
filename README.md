@@ -48,9 +48,14 @@ npm run central
 
 ## Central + Supabase
 
-1. Apply `central/supabase/migrations/0001_init.sql` to the Supabase project.
-2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in central's `.env` (never in the app).
-3. `npm run central:seed` loads listings and the online pool.
+Project: **Booking System** (`xrpkpxxxancrogjddriw`). The migration is applied and the
+listings + 60 days of online pool are seeded.
+
+1. In central's `.env`, set `SUPABASE_SERVICE_KEY` to the project's **secret** key
+   (dashboard → Project Settings → API Keys). Never put it in the app or commit it.
+2. `npm run central:seed` tops up the online pool for new days (safe to re-run).
+
+To rebuild from scratch on another project: apply `central/supabase/migrations/0001_init.sql`, then seed.
 
 Without Supabase, central still serves search (live from the islands); online booking returns 503.
 
