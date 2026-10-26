@@ -82,16 +82,23 @@ declare
   d        integer;
   result   bookings;
 begin
+  -- 1. Idempotency: the app retried a request we already handled
+  --    (e.g. its connection dropped before the reply). Return the same booking.
   select * into existing from bookings where request_id = p_request_id;
   if found then
-    return existing;                         -- retry of a request we already handled
+    return existing;
   end if;
 
+  -- 2. The listing must exist; its price is needed for the total.
   select price_php into price from listings where id = p_listing_id;
   if not found then
     raise exception 'UNKNOWN_LISTING';
   end if;
 
+  -- 3. Take p_qty units for every night. "and available >= p_qty" makes check
+  --    and decrement one atomic step: Postgres locks the row, so concurrent
+  --    buyers of the last room queue up and only the first one finds a match.
+  --    Raising an exception rolls back the nights already taken in this call.
   for d in 0 .. p_nights - 1 loop
     update online_inventory
        set available = available - p_qty
@@ -103,6 +110,8 @@ begin
     end if;
   end loop;
 
+  -- 4. Units reserved: record the booking (status defaults to CONFIRMED,
+  --    payment is mocked) and return it to the central server.
   insert into bookings (id, request_id, listing_id, day, nights, qty, guest_name, guest_email,
                         id_type, id_last4, total_php, code)
   values (p_booking_id, p_request_id, p_listing_id, p_day, p_nights, p_qty, p_guest_name,
@@ -121,6 +130,9 @@ declare
   b bookings;
   d integer;
 begin
+  -- 1. Flip CONFIRMED -> CANCELLED atomically. A booking that is already
+  --    cancelled or already checked in matches nothing, so it cannot be
+  --    cancelled (or refunded) twice.
   update bookings set status = 'CANCELLED', updated_at = now()
    where id = p_booking_id and status = 'CONFIRMED'
   returning * into b;
@@ -128,6 +140,7 @@ begin
     raise exception 'NOT_CANCELLABLE';
   end if;
 
+  -- 2. Give the units back to the online pool for every night of the stay.
   for d in 0 .. b.nights - 1 loop
     update online_inventory set available = available + b.qty
      where listing_id = b.listing_id and day = b.day + d;
@@ -136,5 +149,7 @@ begin
 end;
 $$;
 
+-- Only the central server (service role) may call these functions; the public
+-- anon key cannot book or cancel by talking to Supabase directly.
 revoke execute on function book_online from public, anon, authenticated;
 revoke execute on function cancel_online from public, anon, authenticated;

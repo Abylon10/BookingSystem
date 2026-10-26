@@ -85,8 +85,16 @@ npm run test:search -- --runs 20
 ## Team checks
 
 ```bash
-npm run typecheck
+npm run typecheck              # servers
+cd app && npx tsc --noEmit     # Expo app
 ```
+
+### Code style
+
+- Every file starts with a header comment: what it is, where it runs, what it is responsible for.
+- Every block of code (function, route, query, transaction, UI section) gets a comment saying
+  **what it does and why**, especially anything about concurrency, idempotency, or offline behaviour.
+- Mark unfinished work as `TODO(topic): ...` so it is easy to find.
 
 UI inspired by a hotel-booking UI kit found on Pinterest; palette "Travel Agency"
 (`#12212E #307082 #6CA3A2 #ECE7DC #EA9940`). Resorts and operators are fictional.
