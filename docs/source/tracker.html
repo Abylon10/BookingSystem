@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Development Tracker — Biliran Resort &amp; Tour Booking System</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm 8mm 10mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 7pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+    @bottom-left { content: "Project Development Tracker — Biliran Resort & Tour Booking System — status as of 29 Oct 2026"; font: 7pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+  }
+  :root { --ink:#12212E; --primary:#307082; --secondary:#6CA3A2; --sand:#ECE7DC; --accent:#EA9940; --muted:#5B6B75; --line:#cfd8d6; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font: 7.4pt/1.3 "Segoe UI", Arial, sans-serif; color: var(--ink); }
+  .head { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 0; border: 1px solid var(--primary); margin-bottom: 2mm; }
+  .head div { padding: 1.4mm 2.5mm; border-right: 1px solid var(--line); }
+  .head div:last-child { border-right: 0; }
+  .head .k { font-size: 6.5pt; text-transform: uppercase; letter-spacing: .3mm; color: var(--muted); }
+  .head .v { font-size: 9.5pt; font-weight: 700; }
+  .head .title { background: var(--primary); color: #fff; }
+  .head .title .k { color: #d6e6ea; }
+  .meta { display: flex; justify-content: space-between; gap: 4mm; margin-bottom: 2mm; font-size: 7pt; }
+  .legend span { display: inline-block; margin-right: 3mm; }
+  .sw { display: inline-block; width: 3mm; height: 2.4mm; vertical-align: middle; margin-right: 1mm; border-radius: .5mm; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { display: table-header-group; }
+  th { background: var(--primary); color: #fff; font-weight: 600; padding: .8mm 1mm; font-size: 6.6pt; text-align: center; border: .3mm solid #fff; }
+  th.l { text-align: left; }
+  td { border: .2mm solid var(--line); padding: .9mm 1mm; vertical-align: top; }
+  tr { break-inside: avoid; }
+  tr.phase td { background: var(--sand); font-weight: 700; color: var(--primary); font-size: 7.6pt; padding: 1mm; }
+  td.c { text-align: center; }
+  td.day { padding: 0; }
+  td.day.on { background: var(--secondary); }
+  td.day.done { background: var(--primary); }
+  td.day.next { background: #d5e6e6; }
+  td.day.today { box-shadow: inset 0 0 0 .5mm var(--accent); }
+  th.today { background: var(--accent); color: var(--ink); }
+  th.wk { background: var(--ink); }
+  th.day { font-size: 5.6pt; padding: .6mm 0; font-weight: 500; }
+  .pct { font-weight: 700; }
+  .bar { height: 1.6mm; background: #e7ecec; border-radius: 1mm; margin-top: .6mm; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--primary); }
+  .ev { color: var(--muted); font-size: 6.6pt; margin-top: .5mm; }
+  .ev b { color: var(--ink); }
+  .st { display: inline-block; white-space: nowrap; padding: 0 1.2mm; border-radius: 1mm; font-size: 6.2pt; font-weight: 700; }
+  .st.d { background: var(--primary); color: #fff; }
+  .st.p { background: var(--accent); color: var(--ink); }
+  .st.n { background: #e7ecec; color: var(--muted); }
+  h2 { font-size: 10pt; color: var(--primary); margin: 3mm 0 1.5mm; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .small td, .small th { font-size: 7pt; }
+  .pagebreak { break-before: page; }
+  .shot { width: 100%; border: .3mm solid var(--line); border-radius: 1.5mm; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="title"><div class="k">Project</div><div class="v">Biliran Resort &amp; Tour Booking System</div></div>
+  <div><div class="k">Instructor</div><div class="v">Engr. Eunel O. Peñaranda</div></div>
+  <div><div class="k">Course</div><div class="v">Parallel and Distributed System</div></div>
+  <div><div class="k">Date</div><div class="v">October 26 – November 20</div></div>
+</div>
+<div class="meta">
+  <div><b>Team:</b> Member A — central node &amp; integration · Member B — island node · Member C — mobile app · Member D — consoles, reports &amp; testing</div>
+  <div class="legend"><span><i class="sw" style="background:#307082"></i>Done</span><span><i class="sw" style="background:#6CA3A2"></i>Ongoing</span><span><i class="sw" style="background:#d5e6e6"></i>Planned</span><span><i class="sw" style="background:#fff;box-shadow:inset 0 0 0 .5mm #EA9940"></i>Today (29 Oct)</span></div>
+</div>
+
+<table id="tracker">
+  <colgroup>
+    <col style="width:7mm"><col style="width:38mm"><col style="width:20mm"><col style="width:9mm"><col style="width:9mm"><col style="width:7mm">
+    <col style="width:77mm"><col style="width:13mm">
+    <!-- 26 day columns are added by the script -->
+  </colgroup>
+  <thead id="thead"></thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<div class="pagebreak"></div>
+<h2>Evidence attached (status as of 29 October 2026)</h2>
+<div class="two">
+  <div>
+    <table class="small">
+      <thead><tr><th class="l" style="width:24%">Task</th><th class="l">File / evidence (repository github.com/Abylon10/BookingSystem)</th></tr></thead>
+      <tbody>
+        <tr><td>1.1, 1.1.1, 1.2</td><td><b>docs/System-Design-and-Initial-Considerations.pdf</b> §1 Introduction, §2 Objectives, §3 Scope and limitations, §6 Roles, §4.1 and §13 parallel/distributed components; §18 team roles</td></tr>
+        <tr><td>2.1</td><td>Same document §4 conceptual framework (IPO), §5 architecture diagram, §8 flowcharts, §9 sequence diagrams; short version <b>docs/Framework-and-Flowcharts.pdf</b></td></tr>
+        <tr><td>2.2</td><td>Same document §5.1 module list, §5.2 interfaces, §5.3 data flow, §11 data model (ERD), §15 technology stack; gRPC contract <b>proto/booking.proto</b></td></tr>
+        <tr><td>2.3</td><td><b>docs/Framework-Review-Slides.pdf</b> (short review slides) + the framework document above</td></tr>
+        <tr><td>3.1</td><td>Baseline prototype, source version git tag <b>baseline-v1-2026-10-29</b>. Screenshot: <b>docs/evidence/2026-10-29-baseline-island-console.png</b> (right)</td></tr>
+        <tr><td>4.1, 4.2, 5.2</td><td>Preliminary measurements from the prototype (local laptop, 150 ms simulated link): parallel search 2.93× faster than sequential (180 ms vs 527 ms, 10 runs each); 30 concurrent bookings for 6 rooms → exactly 6 booked, 0 oversold; parallel double check-in → exactly one success</td></tr>
+        <tr><td>6.1</td><td><b>README.md</b> (setup), <b>DESIGN.md</b> (v2 design), every code block commented</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <img class="shot" src="../evidence/2026-10-29-baseline-island-console.png" alt="Baseline island console">
+    <p class="ev" style="margin-top:1.5mm"><b>Baseline (task 3.1):</b> Biliran island node console running the v1 prototype — walk-in availability, three walk-in bookings, one guest checked in (REDEEMED), and four events waiting in the outbox to sync to central. Captured 29 Oct 2026. The v1 prototype predates the adviser's v2 changes (packages, no tickets); it is being reworked to v2 under tasks 3.1–3.2.</p>
+  </div>
+</div>
+
+<h2>Notes</h2>
+<ul style="margin:0;padding-left:5mm">
+  <li>Percentages are honest estimates as of 29 Oct 2026. Measurements in 4.1/4.2/5.2 are preliminary (prototype on one laptop); final evidence will be measured on the four-laptop hotspot setup with 100 / 500 / 1,000 requests.</li>
+  <li>Design was revised to v2 on 29 Oct after adviser feedback: no inventory split, receptionist marks unavailable services, no tickets, package booking, central admin + node admins + receptionists.</li>
+  <li>Known open items: framework approval (2.3), v2 rework of the island data model, hotspot test with all 8 devices.</li>
+</ul>
+
+<script>
+// Tasks: [no, task, owner, start(MM-DD), due(MM-DD), remarks, evidence, pct]
+const P = (title) => ({ phase: title });
+const T = (no, task, owner, start, due, remarks, evidence, pct) => ({ no, task, owner, start, due, remarks, evidence, pct });
+const tasks = [
+  P('PHASE 1: Project Planning and Requirements'),
+  T('1.1', 'Select project and define problem statement, objectives, and scope', 'Member A + Member B', '10-26', '10-26',
+    'Problem: online and walk-in sales of island resort/tour packages share the same rooms, seats and boats, so the last unit can be sold twice; island links to the mainland are unreliable. Objective: book packages online and face-to-face from one inventory with no double booking, and keep islands working offline. Scope: prototype, 3 island nodes + 1 central node, simulated payment, fictional businesses.',
+    'Design doc §1–3', 100),
+  T('1.1.1', 'Assign roles, responsibilities, and individual deliverables', 'Member A', '10-26', '10-26',
+    'Member A: central node, booking saga, central admin panel, Supabase, gRPC contract, integration. Member B: island node (inventory, packages, hold/confirm, accounts, sync). Member C: customer mobile app (Expo). Member D: node console UI, parallel reports, load tests, benchmark charts. Every member explains the overall design and their own module.',
+    'Design doc §18, §5.1', 100),
+  T('1.2', 'Identify the parallel and distributed components of the proposed system', 'Member A + Member B', '10-26', '10-28',
+    'Distributed: each island node owns its data (SQLite) and talks to central over gRPC; outbox sync with retries and de-duplication; islands keep working offline (partition). Parallel: central queries all islands concurrently (fan-out); concurrent bookings made safe with atomic guarded updates; reports computed with worker threads.',
+    'Design doc §4.1, §12, §13', 100),
+  P('PHASE 2: System Framework and Technical Design'),
+  T('2.1', 'Prepare system architecture, workflow, and framework', 'Member A + Member B', '10-27', '10-29',
+    'Architecture: 4 laptops on a hotspot — central (API, saga, admin panel, Supabase) + 3 island nodes (server, SQLite, console); phones run the app. IPO conceptual framework, 7 flowcharts (online booking, walk-in, arrival, mark unavailable, catalog change, registration/accounts), sequence and state diagrams. Revised to v2 after adviser feedback; awaiting approval.',
+    'Design doc §4, §5, §8–10; Framework-and-Flowcharts.pdf', 90),
+  T('2.2', 'Define modules, interfaces, data flow, and technology stack', 'Member A + Member B', '10-28', '10-30',
+    'Modules M1–M11 (app, central API, orchestrator, admin panel, central sync, island booking engine, catalog/accounts, sync agent, node console, report workers, test tools). Interfaces: HTTP/JSON (app, consoles, admin), gRPC IslandService/CentralService. Stack: Expo (React Native, TypeScript), Node.js + TypeScript, gRPC, SQLite, Supabase PostgreSQL, worker_threads.',
+    'Design doc §5.1–5.3, §11, §15; proto/booking.proto', 90),
+  T('2.3', 'Submit and defend the initial system framework for instructor approval', 'Whole team', '10-30', '10-30',
+    'Prepared: framework document (architecture diagram, workflow, module list, interfaces, data flow, technology stack) and short review slides. Defense scheduled 30 Oct; approval pending.',
+    'Framework-Review-Slides.pdf', 50),
+  P('PHASE 3: Core System Development'),
+  T('3.1', 'Develop the basic functional system (baseline version)', 'Member A + Member B', '10-29', '11-03',
+    'Baseline v1 runs: 3 island nodes + central over gRPC, parallel search, walk-in booking from the island inventory, check-in once only, outbox sync to central, Supabase online booking. Rework to v2 (packages, hold → pay → confirm, no tickets) started.',
+    'Tag baseline-v1-2026-10-29; screenshot attached', 30),
+  T('3.2', 'Implement core features and individual modules', 'Members B, C, D', '11-02', '11-06',
+    'Planned: package catalog and per-guest items, mark-unavailable (blocked units), arrival confirmation by reference/name, node admin pages, receptionist accounts and local login, customer app screens. Starts once the v2 baseline is usable.',
+    '', 0),
+  P('PHASE 4: Parallel and Distributed Implementation'),
+  T('4.1', 'Implement parallel processing or concurrent task execution', 'Member D + Member A', '11-03', '11-09',
+    'Done in prototype: concurrent fan-out search (measured 2.93× vs sequential). To do: occupancy/sales reports split across 1/2/4/8 worker threads, compared with a sequential run; record test conditions.',
+    'loadtest/search.ts', 15),
+  T('4.2', 'Implement distributed communication, coordination, or remote processing', 'Member A + Member B', '11-04', '11-10',
+    'Done in prototype: gRPC between nodes with deadlines, idempotency keys, outbox with retries and de-duplication by event id, partition switch. To do for v2: HoldBooking/ConfirmBooking/ReleaseHold, PullDirectory, reconnect handling.',
+    'shared/rpc.ts, island/server.ts', 30),
+  T('4.3', 'Integrate parallel and distributed components', 'Whole team', '11-09', '11-11',
+    'Demonstrate one complete booking: app → central → island hold → payment → confirm → arrival at the desk → sync to central → visible in admin reports.',
+    '', 0),
+  P('PHASE 5: Integration and Testing'),
+  T('5.1', 'Conduct functional, integration, and error-handling tests', 'Member C + Member D', '11-10', '11-12',
+    'Prototype end-to-end checks pass (10/10). Test cases to attach: valid booking, sold out, duplicate request, payment failure, hold expiry, double arrival, island offline, reconnect and sync; expected vs actual, pass/fail.',
+    '', 10),
+  T('5.2', 'Collect performance evidence and explain parallel/distributed behavior', 'Member D', '11-11', '11-13',
+    'Preliminary: search 2.93× faster in parallel; 30 concurrent requests for 6 rooms → 0 oversold. Final: 100 / 500 / 1,000 requests on the hotspot, report speedup with 1/2/4/8 threads, compared with Amdahl\'s law. No speedup claimed without measurements.',
+    '', 15),
+  P('PHASE 6: Documentation and Evidence'),
+  T('6.1', 'Technical documentation and individual contribution records', 'Member D', '11-13', '11-16',
+    'Existing: README (setup), DESIGN.md, 34-page design document, commented code. To add: testing results, limitations, individual contribution records.',
+    'README.md, DESIGN.md', 20),
+  P('PHASE 7: Final Validation and Defense Preparation'),
+  T('7.1', 'Prepare slides, architecture visuals, and demonstration sequence', 'Member C', '11-13', '11-16',
+    'Final slides: problem, architecture, parallel/distributed workflow, test evidence, limitations, live demo order (register island → publish package → book online → walk-in race → island offline → benchmarks).',
+    '', 0),
+  T('7.2', 'Conduct mock defense and individual questioning', 'Whole team', '11-16', '11-17',
+    'Timed mock defense; each member answers questions on their own module.', '', 0),
+  T('7.3', 'Fix critical bugs and verify the final system version', 'Member B', '11-16', '11-18',
+    'Fix critical defects, rerun regression tests, record remaining known issues.', '', 0),
+  T('7.4', 'Submit final project package and prepare backup demonstration', 'Member A + Member D', '11-18', '11-18',
+    'Report, source code, README/setup guide, dependency list, test evidence, contribution record, slides, recorded backup demo.', '', 0),
+  P('PHASE 8: Final Defense'),
+  T('8.1', 'Final project defense and live demonstration', 'Whole team', '11-19', '11-20',
+    'Live demo on four laptops and phones: online and walk-in booking, race for the last room, island offline and recovery, measured speedups, failure handling.', '', 0),
+];
+
+// Day columns: 26 Oct – 20 Nov 2026.
+const days = [];
+for (let d = new Date(Date.UTC(2026, 9, 26)); d <= new Date(Date.UTC(2026, 10, 20)); d.setUTCDate(d.getUTCDate() + 1)) days.push(new Date(d));
+const iso = (d) => d.toISOString().slice(5, 10);
+const TODAY = '10-29';
+const label = (d) => `${d.getUTCDate()}`;
+const mon = (d) => d.getUTCMonth() === 9 ? 'Oct' : 'Nov';
+const dayOf = (mmdd) => new Date(Date.UTC(2026, Number(mmdd.slice(0, 2)) - 1, Number(mmdd.slice(3))));
+const durationDays = (s, e) => Math.max(1, Math.round((dayOf(e) - dayOf(s)) / 864e5));
+const fmt = (mmdd) => `${Number(mmdd.slice(0, 2))}/${Number(mmdd.slice(3))}`;
+
+// Column widths for the day grid.
+const cg = document.querySelector('colgroup');
+for (const _ of days) { const c = document.createElement('col'); c.style.width = '3.85mm'; cg.append(c); }
+
+// Header: weeks row + day row.
+const weeks = [];
+days.forEach((d, i) => { const w = Math.floor(i / 7); (weeks[w] ??= []).push(d); });
+document.getElementById('thead').innerHTML =
+  `<tr><th rowspan="2">No.</th><th rowspan="2" class="l">Tasks and action items</th><th rowspan="2">Task owner</th><th rowspan="2">Start</th><th rowspan="2">Due</th><th rowspan="2">Days</th><th rowspan="2" class="l">Remarks / annotations</th><th rowspan="2">% done</th>` +
+  weeks.map((w, i) => `<th class="wk" colspan="${w.length}">Week ${i + 1}</th>`).join('') + `</tr><tr>` +
+  days.map((d) => `<th class="day ${iso(d) === TODAY ? 'today' : ''}">${label(d)}<br>${mon(d)}</th>`).join('') + `</tr>`;
+
+// Body rows.
+const tb = document.getElementById('tbody');
+for (const t of tasks) {
+  if (t.phase) { tb.insertAdjacentHTML('beforeend', `<tr class="phase"><td colspan="${8 + days.length}">${t.phase}</td></tr>`); continue; }
+  const state = t.pct >= 100 ? 'd' : t.pct > 0 ? 'p' : 'n';
+  const stLabel = { d: 'Done', p: 'Ongoing', n: 'Planned' }[state];
+  const cells = days.map((d) => {
+    const k = iso(d);
+    const inRange = k >= t.start && k <= t.due;
+    const cls = ['day', inRange ? (state === 'd' ? 'done' : state === 'p' ? 'on' : 'next') : '', k === TODAY ? 'today' : ''].join(' ');
+    return `<td class="${cls}"></td>`;
+  }).join('');
+  tb.insertAdjacentHTML('beforeend', `<tr>
+    <td class="c"><b>${t.no}</b></td>
+    <td>${t.task}</td>
+    <td>${t.owner}</td>
+    <td class="c">${fmt(t.start)}</td>
+    <td class="c">${fmt(t.due)}</td>
+    <td class="c">${durationDays(t.start, t.due)}</td>
+    <td>${t.remarks}${t.evidence ? `<div class="ev"><b>Evidence:</b> ${t.evidence}</div>` : ''}</td>
+    <td class="c"><span class="pct">${t.pct}%</span><div class="bar"><i style="width:${t.pct}%"></i></div><span class="st ${state}">${stLabel}</span></td>
+    ${cells}</tr>`);
+}
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>
