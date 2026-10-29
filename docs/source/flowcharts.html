@@ -42,6 +42,7 @@
   #d-erd-central svg { max-height: 238mm; width: auto; }
   #d-erd-island svg { max-height: 192mm; width: auto; }
   #d-catalog svg { max-height: 215mm; width: auto; }
+  #d-dataflow svg { max-height: 195mm; width: auto; }
   .caption { text-align: center; font-size: 9pt; color: var(--muted); margin: -1mm 0 4mm; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
   .tag { display: inline-block; padding: 0 2mm; border-radius: 3mm; font-size: 8.5pt; font-weight: 600; }
@@ -205,6 +206,29 @@ D['d-arch'] = `flowchart TB
   classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
   class API,ADM,SAGA central
   class B,M,H island
+  class APP app`;
+
+D['d-dataflow'] = `%%{init: {"flowchart": {"rankSpacing": 30, "nodeSpacing": 22}}}%%
+flowchart TD
+  APP["M1 Mobile app"] -- "search, hold,<br/>pay, cancel" --> API["M2 Central API"]
+  API --> ORC["M3 Orchestrator"]
+  ORC -- "gRPC" --> ENG["M6 Island<br/>booking engine"]
+  CON["M9 Node console"] -- "walk-in, arrival,<br/>block, catalog" --> ENG
+  CON --> CAT["M7 Catalog<br/>and accounts"]
+  ENG --> IDB[("Island SQLite")]
+  CAT --> IDB
+  IDB -.-> AG["M8 Sync agent"]
+  AG -. "PushEvents" .-> SYNC["M5 Central sync"]
+  SYNC -. "PullDirectory" .-> AG
+  SYNC --> SB[("Supabase")]
+  ADM["M4 Admin panel"] --> SB
+  ADM --> REP["M10 Report workers"]
+  REP --> SB
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class API,ORC,SYNC,ADM,REP,SB central
+  class ENG,CAT,AG,IDB,CON island
   class APP app`;
 
 D['d-usecase'] = `%%{init: {"flowchart": {"nodeSpacing": 6, "rankSpacing": 70}}}%%

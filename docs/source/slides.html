@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Framework Review — Biliran Resort &amp; Tour Booking System</title>
+<style>
+  @page { size: 254mm 142.875mm; margin: 0; }
+  :root { --ink:#12212E; --primary:#307082; --secondary:#6CA3A2; --sand:#ECE7DC; --accent:#EA9940; --muted:#5B6B75; --line:#cfd8d6; --tint:#E3EEF0; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font: 13pt/1.4 "Segoe UI", Arial, sans-serif; color: var(--ink); }
+  .slide { width: 254mm; height: 142.875mm; position: relative; overflow: hidden; break-after: page; padding: 11mm 14mm 12mm; background: #fff; }
+  .slide:last-child { break-after: auto; }
+  .slide h1 { font-size: 22pt; margin: 0 0 1mm; color: var(--primary); }
+  .slide .sub { color: var(--muted); font-size: 11pt; margin: 0 0 4mm; }
+  .bar { position: absolute; left: 0; top: 0; width: 4mm; height: 100%; background: var(--primary); }
+  .bar::after { content: ""; position: absolute; left: 0; top: 0; width: 4mm; height: 22mm; background: var(--accent); }
+  .foot { position: absolute; left: 14mm; right: 14mm; bottom: 5mm; display: flex; justify-content: space-between; font-size: 8pt; color: var(--muted); }
+  ul { margin: 0; padding-left: 6mm; }
+  li { margin-bottom: 1.6mm; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .card { background: var(--tint); border-radius: 3mm; padding: 4mm 5mm; }
+  .card h3 { margin: 0 0 2mm; font-size: 13pt; color: var(--primary); }
+  .card.warm { background: #FBEBD9; }
+  .card.warm h3 { color: #8a4b0f; }
+  .card.ink { background: var(--ink); color: #fff; }
+  .card.ink h3 { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  th { background: var(--primary); color: #fff; text-align: left; padding: 1.4mm 2mm; font-weight: 600; }
+  td { padding: 1.3mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  code { font-family: Consolas, monospace; font-size: .9em; background: var(--sand); padding: 0 1mm; border-radius: 1mm; }
+  .diagram { display: flex; justify-content: center; }
+  .diagram svg { max-width: 100% !important; height: auto; max-height: 98mm; }
+  .big { font-size: 28pt; font-weight: 800; color: var(--primary); line-height: 1.1; }
+  .muted { color: var(--muted); }
+  /* Title slide */
+  .title { background: var(--primary); color: #fff; padding: 22mm 18mm; }
+  .title .kicker { text-transform: uppercase; letter-spacing: .6mm; font-size: 10pt; color: #d6e6ea; }
+  .title h1 { color: #fff; font-size: 30pt; line-height: 1.15; margin: 3mm 0 3mm; }
+  .title .tag { font-size: 14pt; color: #e8f1f3; }
+  .title .band { position: absolute; left: 0; right: 0; bottom: 30mm; height: 3mm; background: var(--accent); }
+  .title .who { position: absolute; left: 18mm; right: 18mm; bottom: 9mm; font-size: 10pt; color: #e8f1f3; display: flex; justify-content: space-between; }
+  .ipo { display: grid; grid-template-columns: 1fr 8mm 1.2fr 8mm 1fr; align-items: stretch; }
+  .ipo .box { border: .5mm solid var(--primary); border-radius: 3mm; overflow: hidden; }
+  .ipo h4 { margin: 0; padding: 1.6mm; text-align: center; background: var(--primary); color: #fff; font-size: 12pt; }
+  .ipo .p h4 { background: var(--ink); }
+  .ipo .o h4 { background: var(--accent); color: var(--ink); }
+  .ipo ul { font-size: 9.6pt; margin: 2.5mm 2mm 2mm 0; }
+  .ipo .arr { display: flex; align-items: center; justify-content: center; font-size: 18pt; color: var(--primary); font-weight: 700; }
+  .shot { width: 100%; border-radius: 2mm; border: .3mm solid var(--line); }
+  .stat { background: var(--tint); border-radius: 3mm; padding: 3mm 4mm; margin-bottom: 3mm; }
+  .stat .big { font-size: 22pt; }
+</style>
+</head>
+<body>
+
+<!-- 1. Title -->
+<section class="slide title">
+  <div class="kicker">Parallel and Distributed System · Initial framework review</div>
+  <h1>Biliran Resort &amp; Tour<br>Booking System</h1>
+  <div class="tag">Online and face-to-face booking of island packages — one inventory, no double booking, works offline</div>
+  <div class="band"></div>
+  <div class="who"><span>Member A · Member B · Member C · Member D</span><span>Instructor: Engr. Eunel O. Peñaranda · 30 October 2026</span></div>
+</section>
+
+<!-- 2. Problem and objectives -->
+<section class="slide"><div class="bar"></div>
+  <h1>Problem and objectives</h1>
+  <p class="sub">Biliran's resorts and tours sell to online travellers and walk-in guests at the same time</p>
+  <div class="cols">
+    <div class="card warm"><h3>Problem</h3><ul>
+      <li>Online and walk-in sales draw from the <b>same rooms, seats and boats</b> — the last unit can be sold twice</li>
+      <li>Island links to the mainland are <b>unreliable</b>; a central-only system stops the front desk</li>
+      <li>Each resort manages its own services, but registration, accounts and reports need one place</li>
+      <li>Searching islands one after another gets slower with every island</li>
+    </ul></div>
+    <div class="card"><h3>Objectives</h3><ul>
+      <li>Book packages <b>online (app)</b> and <b>face-to-face (desk)</b> from one inventory</li>
+      <li><b>Zero</b> oversold units and double check-ins under concurrency</li>
+      <li>Islands keep operating <b>offline</b> and sync automatically</li>
+      <li><b>Measure</b> parallel speedup: search fan-out and reports</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>2</span></div>
+</section>
+
+<!-- 3. Scope -->
+<section class="slide"><div class="bar"></div>
+  <h1>Scope and limitations</h1>
+  <p class="sub">Prototype demonstrated on 4 laptops and 4 phones over one hotspot</p>
+  <div class="cols">
+    <div class="card"><h3>In scope</h3><ul>
+      <li>3 island nodes (Biliran mainland, Maripipi, Higatangan) + 1 central node</li>
+      <li>Packages per island (room + tour + boat + meal)</li>
+      <li>Online hold → pay → confirm; walk-in booking at the desk</li>
+      <li>Arrival confirmation: booking info + physical ID check</li>
+      <li>Receptionist marks services unavailable</li>
+      <li>Central admin, node admins, receptionists</li>
+    </ul></div>
+    <div class="card warm"><h3>Limitations</h3><ul>
+      <li>Payment is <b>simulated</b></li>
+      <li>Packages cannot span islands</li>
+      <li>Offline island → its packages not sold online</li>
+      <li>No customer accounts (reference + e-mail)</li>
+      <li>Only last 4 ID digits stored (RA 10173)</li>
+      <li>Fictional businesses, sample prices</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>3</span></div>
+</section>
+
+<!-- 4. Parallel and distributed components -->
+<section class="slide"><div class="bar"></div>
+  <h1>Parallel and distributed components</h1>
+  <p class="sub">Where the course concepts live in the system</p>
+  <div class="cols">
+    <div class="card ink"><h3>Distributed</h3><ul>
+      <li>Data <b>partitioned by island</b>: each node owns its services, inventory and bookings</li>
+      <li>Nodes communicate by <b>remote procedure calls (gRPC)</b> with deadlines</li>
+      <li><b>Outbox sync</b> with retries and de-duplication</li>
+      <li><b>Partition tolerance</b>: islands work offline, sync on reconnect</li>
+      <li>One writer per data item — no conflicting edits</li>
+    </ul></div>
+    <div class="card"><h3>Parallel / concurrent</h3><ul>
+      <li><b>Parallel fan-out</b>: central queries all islands at once</li>
+      <li><b>Concurrent bookings</b> made safe with atomic guarded updates and transactions</li>
+      <li><b>Worker threads</b> compute occupancy and sales reports (1/2/4/8)</li>
+      <li><b>Load generators</b> fire N simultaneous requests to test and measure</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>4</span></div>
+</section>
+
+<!-- 5. Architecture -->
+<section class="slide"><div class="bar"></div>
+  <h1>System architecture</h1>
+  <div class="diagram" id="s-arch"></div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>5</span></div>
+</section>
+
+<!-- 6. Conceptual framework -->
+<section class="slide"><div class="bar"></div>
+  <h1>Conceptual framework (IPO)</h1>
+  <div class="ipo" style="margin-top:4mm">
+    <div class="box"><h4>INPUT</h4><ul>
+      <li>Customer: date, guests, package, guest details, payment</li>
+      <li>Receptionist: walk-ins, arrivals, unavailable services</li>
+      <li>Node admin: services, packages, prices, receptionists</li>
+      <li>Central admin: islands, node admins, report requests</li>
+      <li>Network state: island online / offline</li>
+    </ul></div>
+    <div class="arr">➜</div>
+    <div class="box p"><h4>PROCESS</h4><ul>
+      <li>Parallel search fan-out over gRPC</li>
+      <li>Atomic hold / confirm on the owning island</li>
+      <li>Saga: hold → pay → confirm, release on failure</li>
+      <li>Idempotent requests; single writer per item</li>
+      <li>Outbox sync and directory pull</li>
+      <li>Offline operation of island nodes</li>
+      <li>Parallel reports with worker threads</li>
+    </ul></div>
+    <div class="arr">➜</div>
+    <div class="box o"><h4>OUTPUT</h4><ul>
+      <li>Confirmed bookings + confirmation info</li>
+      <li>Inventory never oversold</li>
+      <li>Guests checked in exactly once</li>
+      <li>Province-wide reports</li>
+      <li>Measured speedup, throughput, latency</li>
+    </ul></div>
+  </div>
+  <p class="muted" style="font-size:9.5pt;text-align:center;margin-top:3mm">Feedback: race, load, partition and speedup tests refine the design.</p>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>6</span></div>
+</section>
+
+<!-- 7. Workflow -->
+<section class="slide"><div class="bar"></div>
+  <h1>Main workflow: online booking</h1>
+  <p class="sub">Walk-ins use the same island inventory directly from the node console</p>
+  <div class="diagram" id="s-flow"></div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>7</span></div>
+</section>
+
+<!-- 8. Consistency and offline -->
+<section class="slide"><div class="bar"></div>
+  <h1>Consistency and offline behaviour</h1>
+  <div class="cols" style="grid-template-columns:1.25fr 1fr">
+    <table>
+      <thead><tr><th style="width:46%">Race</th><th>Solution</th></tr></thead>
+      <tbody>
+        <tr><td>Online vs walk-in, last room</td><td>Both go to the owning island; one atomic guarded update decides</td></tr>
+        <tr><td>Block a room while it is booked</td><td>Same rule: booked + blocked ≤ capacity</td></tr>
+        <tr><td>Retry after timeout</td><td>Idempotency key returns the same booking</td></tr>
+        <tr><td>Two desks confirm one arrival</td><td>CONFIRMED → CHECKED_IN succeeds once</td></tr>
+        <tr><td>Sync event delivered twice</td><td>De-duplicated by event id</td></tr>
+      </tbody>
+    </table>
+    <div class="card"><h3>Island offline</h3><ul style="font-size:11pt">
+      <li>Walk-ins, arrivals, logins keep working</li>
+      <li>Changes queue in the outbox</li>
+      <li>Its packages show <b>unavailable online</b> — never sell what the island cannot confirm (consistency over availability)</li>
+      <li>On reconnect: outbox drains, directory pulled</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>8</span></div>
+</section>
+
+<!-- 9. Modules and stack -->
+<section class="slide"><div class="bar"></div>
+  <h1>Modules and technology stack</h1>
+  <div class="cols" style="grid-template-columns:1.3fr 1fr">
+    <table>
+      <thead><tr><th>Module</th><th style="width:22%">Owner</th></tr></thead>
+      <tbody>
+        <tr><td>M1 Customer mobile app</td><td>Member C</td></tr>
+        <tr><td>M2–M5 Central API, orchestrator, admin panel, sync</td><td>Member A</td></tr>
+        <tr><td>M6–M8 Island booking engine, catalog &amp; accounts, sync agent</td><td>Member B</td></tr>
+        <tr><td>M9 Node console (receptionist, node admin)</td><td>Member D</td></tr>
+        <tr><td>M10 Report workers · M11 Test &amp; benchmark tools</td><td>Member D</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+      <tbody>
+        <tr><td>App</td><td>Expo (React Native, TypeScript)</td></tr>
+        <tr><td>Servers</td><td>Node.js + TypeScript, Express</td></tr>
+        <tr><td>Node-to-node</td><td>gRPC (Protocol Buffers)</td></tr>
+        <tr><td>Island storage</td><td>SQLite (<code>node:sqlite</code>)</td></tr>
+        <tr><td>Central storage</td><td>Supabase PostgreSQL</td></tr>
+        <tr><td>Parallel reports</td><td><code>worker_threads</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>9</span></div>
+</section>
+
+<!-- 10. Status and evidence -->
+<section class="slide"><div class="bar"></div>
+  <h1>Status and early evidence</h1>
+  <p class="sub">Baseline prototype (v1) running; reworking to the adviser-approved v2 design</p>
+  <div class="cols" style="grid-template-columns:1.35fr 1fr">
+    <img class="shot" src="../evidence/2026-10-29-baseline-island-console.png" alt="Island console">
+    <div>
+      <div class="stat"><div class="big">2.93×</div>parallel vs sequential search across 3 islands (150 ms simulated link, 10 runs)</div>
+      <div class="stat"><div class="big">0 oversold</div>30 concurrent bookings for 6 rooms → exactly 6 booked</div>
+      <div class="stat"><div class="big">1 of 2</div>parallel double check-in → exactly one succeeds</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:8.5pt;margin-top:1.5mm">Preliminary, measured on one laptop. Final measurements on the 4-laptop hotspot with 100 / 500 / 1,000 requests.</p>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>10</span></div>
+</section>
+
+<!-- 11. Plan and approval -->
+<section class="slide"><div class="bar"></div>
+  <h1>Next steps and items for approval</h1>
+  <div class="cols">
+    <div class="card"><h3>Plan to 20 November</h3><ul style="font-size:11pt">
+      <li><b>Oct 30 – Nov 3:</b> v2 baseline, hotspot test with all 8 devices</li>
+      <li><b>Nov 2 – 10:</b> core features, gRPC v2, offline sync</li>
+      <li><b>Nov 9 – 13:</b> integration, tests, performance evidence</li>
+      <li><b>Nov 13 – 18:</b> documentation, slides, mock defense, fixes</li>
+      <li><b>Nov 19 – 20:</b> final defense and live demo</li>
+    </ul></div>
+    <div class="card warm"><h3>For approval</h3><ul style="font-size:11pt">
+      <li>Framework and architecture as presented</li>
+      <li>Simulated payment (no real gateway)</li>
+      <li>Offline island = unavailable online</li>
+      <li>Package price per package (up to N guests)</li>
+      <li>Cancellation: full refund up to 48 h before</li>
+    </ul></div>
+  </div>
+  <div class="foot"><span>Biliran Resort &amp; Tour Booking System — framework review</span><span>11</span></div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+// Slide diagrams, drawn larger and simpler than in the design document.
+const D = {};
+D['s-arch'] = `flowchart LR
+  APP["Customer phones<br/>Expo app"] -- "HTTP / JSON" --> C
+  subgraph C["Laptop 1 - Central node"]
+    direction TB
+    API["API + booking saga<br/>parallel fan-out"]
+    ADM["Central admin panel"]
+  end
+  C -- "SQL" --> SB[("Supabase")]
+  C <-- "gRPC" --> B["Laptop 2<br/>Biliran node<br/>SQLite + console"]
+  C <-- "gRPC" --> M["Laptop 3<br/>Maripipi node<br/>SQLite + console"]
+  C <-- "gRPC" --> H["Laptop 4<br/>Higatangan node<br/>SQLite + console"]
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class API,ADM central
+  class B,M,H island
+  class APP app`;
+D['s-flow'] = `%%{init: {"themeVariables": {"fontSize": "22px"}, "flowchart": {"nodeSpacing": 18, "rankSpacing": 26}}}%%
+flowchart LR
+  S["Search all<br/>islands in<br/>parallel"] --> HO{"Hold on<br/>island:<br/>all free?"}
+  HO -- "No" --> SO(["Sold<br/>out"])
+  HO -- "Yes" --> PAY{"Pay"}
+  PAY -- "Fail" --> RE(["Release<br/>hold"])
+  PAY -- "OK" --> CF["Confirm +<br/>show info"]
+  CF --> AR["Desk: look up,<br/>check ID,<br/>arrive"]
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  classDef good fill:#E3EEF0,stroke:#307082,color:#12212E
+  class HO,PAY dec
+  class CF,AR good`;
+
+mermaid.initialize({
+  startOnLoad: false, theme: 'base', fontFamily: '"Segoe UI", Arial, sans-serif',
+  themeVariables: { fontSize: '16px', primaryColor: '#E3EEF0', primaryBorderColor: '#307082', primaryTextColor: '#12212E',
+    lineColor: '#307082', clusterBkg: '#F6F4EF', clusterBorder: '#6CA3A2' },
+  flowchart: { htmlLabels: true, curve: 'basis', useMaxWidth: true }
+});
+(async () => {
+  for (const [id, src] of Object.entries(D)) {
+    const el = document.getElementById(id);
+    try { el.innerHTML = (await mermaid.render(id + '-svg', src)).svg; }
+    catch (e) { el.innerHTML = '<pre style="color:#b4432f">Diagram error in ' + id + ': ' + e.message + '</pre>'; }
+  }
+  // Layout check: list slides whose content runs into the footer area.
+  const over = [...document.querySelectorAll('.slide')].map((s, i) => {
+    const limit = s.getBoundingClientRect().bottom - 11 * 3.78;
+    const worst = Math.max(...[...s.children].filter((c) => !c.classList.contains('foot') && !c.classList.contains('bar') && !c.classList.contains('band') && !c.classList.contains('who'))
+      .map((c) => c.getBoundingClientRect().bottom));
+    return worst > limit ? `slide ${i + 1} over by ${Math.round(worst - limit)}px` : null;
+  }).filter(Boolean);
+  document.body.dataset.overflow = over.join('; ') || 'none';
+  // Preview helper: ?skip=N hides the first N slides (used only for screenshots).
+  const skip = Number(new URLSearchParams(location.search).get('skip') || 0);
+  [...document.querySelectorAll('.slide')].slice(0, skip).forEach((s) => { s.style.display = 'none'; });
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>

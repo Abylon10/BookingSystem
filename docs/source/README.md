@@ -1,13 +1,20 @@
-# Design document source
+# Document sources
 
-`design.html` is the source of `../System-Design-and-Initial-Considerations.pdf`;
-`flowcharts.html` is the source of `../Framework-and-Flowcharts.pdf` (framework and flowcharts only).
-Text is plain HTML; every diagram is Mermaid source inside the `D[...]` strings at the bottom.
+| Source | PDF |
+|---|---|
+| `design.html` | `../System-Design-and-Initial-Considerations.pdf` — full design document |
+| `flowcharts.html` | `../Framework-and-Flowcharts.pdf` — conceptual framework and flowcharts only |
+| `slides.html` | `../Framework-Review-Slides.pdf` — short review slides for the framework defense (16:9) |
+| `tracker.html` | `../Project-Development-Tracker.pdf` — filled-in development tracker (A4 landscape) |
 
-To rebuild the PDF after editing (needs internet for the Mermaid CDN):
+Text is plain HTML. Diagrams are Mermaid source in the `D[...]` strings near the bottom of each file;
+the tracker's tasks are the `tasks` list in its script. Screenshots live in `../evidence/`.
+
+To rebuild a PDF after editing (needs internet for the Mermaid CDN), run from this folder:
 
 ```powershell
-& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu --no-pdf-header-footer --virtual-time-budget=40000 --user-data-dir="$env:TEMP\edge-pdf" --print-to-pdf="$PWD\..\System-Design-and-Initial-Considerations.pdf" "file:///$($PWD -replace '\','/')/design.html"
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu --no-pdf-header-footer --allow-file-access-from-files --virtual-time-budget=40000 --user-data-dir="$env:TEMP\edge-pdf" --print-to-pdf="$PWD\..\Framework-Review-Slides.pdf" "file:///$($PWD -replace '\','/')/slides.html"
 ```
 
-Or open `design.html` in Chrome/Edge and Print → Save as PDF (A4, no headers/footers, background graphics on).
+Change `slides.html` / the output name for the other documents. Or open the HTML in Chrome/Edge and
+Print → Save as PDF (no headers/footers, background graphics on).

@@ -42,6 +42,7 @@
   #d-erd-central svg { max-height: 238mm; width: auto; }
   #d-erd-island svg { max-height: 192mm; width: auto; }
   #d-catalog svg { max-height: 215mm; width: auto; }
+  #d-dataflow svg { max-height: 195mm; width: auto; }
   .caption { text-align: center; font-size: 9pt; color: var(--muted); margin: -1mm 0 4mm; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
   .tag { display: inline-block; padding: 0 2mm; border-radius: 3mm; font-size: 8.5pt; font-weight: 600; }
@@ -90,7 +91,7 @@
         <tr><td>Document</td><td>Design v2 — flowcharts, conceptual framework, architecture, data model, requirements, risks, plan</td></tr>
         <tr><td>Version / date</td><td>v2.0 · 29 October 2026 (incorporates adviser revisions)</td></tr>
         <tr><td>Submission deadline</td><td>20 November 2026</td></tr>
-        <tr><td>Team</td><td>[Member 1 — Central &amp; integration] · [Member 2 — Island node] · [Member 3 — Mobile app] · [Member 4 — Consoles, reports &amp; testing]</td></tr>
+        <tr><td>Team</td><td>Member A — Central &amp; integration · Member B — Island node · Member C — Mobile app · Member D — Consoles, reports &amp; testing</td></tr>
         <tr><td>Adviser</td><td>[Adviser name]</td></tr>
         <tr><td>Repository</td><td>github.com/Abylon10/BookingSystem</td></tr>
       </table>
@@ -110,7 +111,7 @@
   <h1>Contents</h1>
   <div class="toc">
     <div>1. Introduction</div><div>2. Objectives</div><div>3. Scope and limitations</div><div>4. Conceptual framework (IPO)</div>
-    <div>5. System architecture</div><div>6. Users, roles and data ownership</div><div>7. Use case diagram</div>
+    <div>5. System architecture, modules, interfaces, data flow</div><div>6. Users, roles and data ownership</div><div>7. Use case diagram</div>
     <div>8. Flowcharts</div><div>&nbsp;&nbsp;8.1 Online booking</div><div>&nbsp;&nbsp;8.2 Walk-in booking</div><div>&nbsp;&nbsp;8.3 Arrival confirmation</div>
     <div>&nbsp;&nbsp;8.4 Mark service unavailable</div><div>&nbsp;&nbsp;8.5 Catalog change by node admin</div><div>&nbsp;&nbsp;8.6 Island registration and accounts</div>
     <div>9. Sequence diagrams</div><div>10. Booking life cycle</div><div>11. Data model (ERD)</div><div>12. Concurrency, consistency and offline operation</div>
@@ -244,6 +245,55 @@
       <tr><td>Node console</td><td>Browser on each island laptop</td><td>Login; receptionist pages; node admin pages</td></tr>
     </tbody>
   </table>
+</section>
+
+<!-- ============================ MODULES ============================ -->
+<section class="section">
+  <h2 style="margin-top:0">5.1 Modules</h2>
+  <table>
+    <thead><tr><th style="width:7%">ID</th><th style="width:24%">Module</th><th style="width:16%">Runs on</th><th>Responsibility</th><th style="width:11%">Owner</th></tr></thead>
+    <tbody>
+      <tr><td>M1</td><td>Customer mobile app</td><td>Phones</td><td>Search packages, book, simulated payment, confirmation info, my bookings, cancel</td><td>Member C</td></tr>
+      <tr><td>M2</td><td>Central API</td><td>Central</td><td>HTTP endpoints for the app; input validation; idempotency keys</td><td>Member A</td></tr>
+      <tr><td>M3</td><td>Booking orchestrator</td><td>Central</td><td>Parallel fan-out search; hold → pay → confirm saga; release on failure</td><td>Member A</td></tr>
+      <tr><td>M4</td><td>Central admin panel</td><td>Central</td><td>Island registration, node admin accounts, all bookings, reports</td><td>Member A</td></tr>
+      <tr><td>M5</td><td>Central sync service</td><td>Central</td><td>Receives island events (<code>PushEvents</code>); serves directory changes (<code>PullDirectory</code>)</td><td>Member A</td></tr>
+      <tr><td>M6</td><td>Island booking engine</td><td>Each island</td><td>Inventory, packages, hold/confirm/release, walk-in booking, arrival confirmation, blocking</td><td>Member B</td></tr>
+      <tr><td>M7</td><td>Island catalog &amp; accounts</td><td>Each island</td><td>Services, packages, prices; receptionist accounts; local login (scrypt)</td><td>Member B</td></tr>
+      <tr><td>M8</td><td>Island sync agent</td><td>Each island</td><td>Outbox sender with retries; directory puller; partition switch</td><td>Member B</td></tr>
+      <tr><td>M9</td><td>Node console</td><td>Island laptops</td><td>Receptionist pages and node admin pages (web)</td><td>Member D</td></tr>
+      <tr><td>M10</td><td>Report workers</td><td>Central</td><td>Occupancy and sales reports computed in parallel with worker threads</td><td>Member D</td></tr>
+      <tr><td>M11</td><td>Test and benchmark tools</td><td>Any laptop</td><td>Race tests, load tests, sequential vs parallel benchmarks</td><td>Member D</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">5.2 Interfaces</h2>
+  <table>
+    <thead><tr><th style="width:22%">Interface</th><th style="width:18%">Protocol</th><th>Operations</th></tr></thead>
+    <tbody>
+      <tr><td>App → Central (M1→M2)</td><td>HTTP / JSON</td><td><code>GET /api/packages?day&amp;guests</code> · <code>POST /api/bookings</code> (hold) · <code>POST /api/bookings/:id/pay</code> · <code>GET /api/bookings/:ref?email</code> · <code>POST /api/bookings/:id/cancel</code></td></tr>
+      <tr><td>Central → Island (M3→M6)</td><td>gRPC <code>IslandService</code></td><td><code>GetCatalog</code> · <code>SearchAvailability</code> · <code>HoldBooking</code> · <code>ConfirmBooking</code> · <code>ReleaseHold</code> · <code>CancelBooking</code> · <code>GetBooking</code> · <code>Ping</code></td></tr>
+      <tr><td>Island → Central (M8→M5)</td><td>gRPC <code>CentralService</code></td><td><code>PushEvents</code> (bookings, catalog changes, receptionist accounts) · <code>PullDirectory</code> (registration, admin accounts)</td></tr>
+      <tr><td>Console → Island (M9→M6/M7)</td><td>HTTP / JSON</td><td><code>/api/login</code> · <code>/api/walkin</code> · <code>/api/arrivals</code> (search, confirm) · <code>/api/blocks</code> · <code>/api/services</code> · <code>/api/packages</code> · <code>/api/staff</code> · <code>/api/partition</code></td></tr>
+      <tr><td>Admin panel → Central (M4)</td><td>HTTP / JSON</td><td><code>/admin/api/islands</code> · <code>/admin/api/accounts</code> · <code>/admin/api/bookings</code> · <code>/admin/api/reports</code></td></tr>
+      <tr><td>Central → Supabase</td><td>PostgreSQL (supabase-js)</td><td>Islands, accounts, catalog copy, booking copy, events</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">5.3 Data flow</h2>
+  <div class="diagram" id="d-dataflow"></div>
+  <div class="caption">Figure 1b. Main data flows. Solid arrows: requests in the booking path; dashed: background synchronisation.</div>
+  <ol class="small">
+    <li><b>Booking path:</b> app → central API → orchestrator → owning island's booking engine → island database. The answer returns the same way.</li>
+    <li><b>Walk-in and arrival path:</b> node console → island booking engine → island database (no central involvement).</li>
+    <li><b>Island → central:</b> every local change also writes an outbox event; the sync agent pushes it to central, which stores copies in Supabase.</li>
+    <li><b>Central → island:</b> registration and admin accounts flow down when the island pulls the directory.</li>
+    <li><b>Reports:</b> admin panel → report workers read the booking copies in parallel.</li>
+  </ol>
 </section>
 
 <!-- ============================ ROLES ============================ -->
@@ -616,10 +666,10 @@
   <table>
     <thead><tr><th style="width:30%">Member</th><th>Responsibilities</th></tr></thead>
     <tbody>
-      <tr><td>[Member 1] — Laptop 1</td><td>Central server, booking saga, central admin panel, Supabase, gRPC contract, integration</td></tr>
-      <tr><td>[Member 2]</td><td>Island node: services, packages, inventory, hold/confirm, accounts and login, outbox and directory sync</td></tr>
-      <tr><td>[Member 3]</td><td>Mobile app: all customer screens</td></tr>
-      <tr><td>[Member 4]</td><td>Node console UI (receptionist and node admin), parallel reports, load tests, benchmark charts</td></tr>
+      <tr><td>Member A — Laptop 1</td><td>Central server, booking saga, central admin panel, Supabase, gRPC contract, integration</td></tr>
+      <tr><td>Member B</td><td>Island node: services, packages, inventory, hold/confirm, accounts and login, outbox and directory sync</td></tr>
+      <tr><td>Member C</td><td>Mobile app: all customer screens</td></tr>
+      <tr><td>Member D</td><td>Node console UI (receptionist and node admin), parallel reports, load tests, benchmark charts</td></tr>
     </tbody>
   </table>
   <h2>Current status (29 October 2026)</h2>
@@ -676,6 +726,29 @@ D['d-arch'] = `flowchart TB
   classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
   class API,ADM,SAGA central
   class B,M,H island
+  class APP app`;
+
+D['d-dataflow'] = `%%{init: {"flowchart": {"rankSpacing": 30, "nodeSpacing": 22}}}%%
+flowchart TD
+  APP["M1 Mobile app"] -- "search, hold,<br/>pay, cancel" --> API["M2 Central API"]
+  API --> ORC["M3 Orchestrator"]
+  ORC -- "gRPC" --> ENG["M6 Island<br/>booking engine"]
+  CON["M9 Node console"] -- "walk-in, arrival,<br/>block, catalog" --> ENG
+  CON --> CAT["M7 Catalog<br/>and accounts"]
+  ENG --> IDB[("Island SQLite")]
+  CAT --> IDB
+  IDB -.-> AG["M8 Sync agent"]
+  AG -. "PushEvents" .-> SYNC["M5 Central sync"]
+  SYNC -. "PullDirectory" .-> AG
+  SYNC --> SB[("Supabase")]
+  ADM["M4 Admin panel"] --> SB
+  ADM --> REP["M10 Report workers"]
+  REP --> SB
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class API,ORC,SYNC,ADM,REP,SB central
+  class ENG,CAT,AG,IDB,CON island
   class APP app`;
 
 D['d-usecase'] = `%%{init: {"flowchart": {"nodeSpacing": 6, "rankSpacing": 70}}}%%
