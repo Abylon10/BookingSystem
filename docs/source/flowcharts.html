@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Biliran Resort &amp; Tour Booking System — Framework and Flowcharts</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8.5pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+    @bottom-left { content: "Biliran Resort & Tour Booking System — Framework and Flowcharts"; font: 8.5pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+  }
+  @page cover { margin: 0; @bottom-center { content: none; } @bottom-left { content: none; } }
+  :root { --ink:#12212E; --primary:#307082; --secondary:#6CA3A2; --sand:#ECE7DC; --accent:#EA9940; --muted:#5B6B75; --line:#cfd8d6; --tint:#E6EEF0; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font: 10.5pt/1.5 "Segoe UI", Arial, sans-serif; color: var(--ink); }
+  h1 { font-size: 19pt; color: var(--primary); margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 2px solid var(--accent); break-after: avoid; }
+  h2 { font-size: 13pt; color: var(--primary); margin: 6mm 0 2mm; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  .section { break-before: page; }
+  .muted { color: var(--muted); }
+  .small { font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0 4mm; font-size: 9.3pt; break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { background: var(--primary); color: #fff; text-align: left; font-weight: 600; padding: 1.6mm 2mm; }
+  td { padding: 1.5mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #f6f4ef; }
+  code { font-family: Consolas, monospace; font-size: 9pt; background: var(--sand); padding: 0 1mm; border-radius: 1mm; }
+  .note { background: var(--tint); border-left: 3px solid var(--primary); padding: 2.5mm 3.5mm; margin: 2mm 0 4mm; font-size: 9.5pt; }
+  .warn { background: #FBEBD9; border-left: 3px solid var(--accent); padding: 2.5mm 3.5mm; margin: 2mm 0 4mm; font-size: 9.5pt; }
+  .diagram { text-align: center; margin: 2mm 0 3mm; break-inside: avoid; }
+  .diagram svg { max-width: 100% !important; height: auto; }
+  .diagram.tall svg { max-height: 205mm; width: auto; }
+  .diagram.mid svg { max-height: 150mm; width: auto; }
+  #d-state svg { max-height: 90mm; width: auto; }
+  .diagram.xtall svg { max-height: 232mm; width: auto; }
+  #d-online-a svg { max-height: 175mm; width: auto; }
+  #d-accounts svg { max-height: 190mm; width: auto; }
+  #d-erd-central svg { max-height: 238mm; width: auto; }
+  #d-erd-island svg { max-height: 192mm; width: auto; }
+  #d-catalog svg { max-height: 215mm; width: auto; }
+  .caption { text-align: center; font-size: 9pt; color: var(--muted); margin: -1mm 0 4mm; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .tag { display: inline-block; padding: 0 2mm; border-radius: 3mm; font-size: 8.5pt; font-weight: 600; }
+
+  /* Cover */
+  .cover { page: cover; height: 297mm; display: flex; flex-direction: column; }
+  .cover-top { background: var(--primary); color: #fff; padding: 40mm 22mm 18mm; }
+  .cover-top .kicker { letter-spacing: .5mm; text-transform: uppercase; font-size: 10pt; color: #d6e6ea; }
+  .cover-top h1 { color: #fff; border: none; font-size: 28pt; line-height: 1.2; margin: 4mm 0 5mm; padding: 0; }
+  .cover-top .sub { font-size: 13pt; color: #e8f1f3; max-width: 150mm; }
+  .cover-band { height: 5mm; background: var(--accent); }
+  .cover-body { padding: 14mm 22mm; flex: 1; background: var(--sand); display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-body table td { background: transparent !important; border-bottom: 1px solid #d8d1c2; font-size: 10.5pt; }
+  .cover-body table td:first-child { width: 45mm; color: var(--muted); }
+  .palette { display: flex; gap: 0; height: 9mm; border-radius: 2mm; overflow: hidden; }
+  .palette div { flex: 1; }
+
+  /* IPO framework */
+  .ipo { display: grid; grid-template-columns: 1fr 9mm 1.25fr 9mm 1fr; align-items: stretch; margin: 3mm 0 0; }
+  .ipo .box { border: 1.5px solid var(--primary); border-radius: 3mm; overflow: hidden; background: #fff; }
+  .ipo .box h4 { margin: 0; padding: 2mm; text-align: center; color: #fff; background: var(--primary); font-size: 11pt; letter-spacing: .4mm; }
+  .ipo .box.p h4 { background: var(--ink); }
+  .ipo .box.o h4 { background: var(--accent); color: var(--ink); }
+  .ipo .box ul { margin: 2.5mm 2.5mm 2.5mm 0; padding-left: 6mm; font-size: 9pt; line-height: 1.4; }
+  .ipo .arrow { display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 18pt; font-weight: 700; }
+  .feedback { margin: 2mm 0 0; border: 1.5px dashed var(--secondary); border-radius: 3mm; padding: 2mm 3mm; text-align: center; font-size: 9pt; color: var(--muted); }
+  .feedback b { color: var(--ink); }
+  .toc { columns: 2; column-gap: 10mm; font-size: 10pt; }
+  .toc div { break-inside: avoid; padding: .6mm 0; border-bottom: 1px dotted var(--line); }
+</style>
+</head>
+<body>
+<div style="background:#307082;color:#fff;padding:7mm 8mm;border-radius:3mm;margin-bottom:6mm">
+  <div style="font-size:9pt;letter-spacing:.4mm;text-transform:uppercase;color:#d6e6ea">Parallel &amp; Distributed Computing · Class Project</div>
+  <div style="font-size:19pt;font-weight:700;margin:1.5mm 0">Biliran Resort &amp; Tour Booking System</div>
+  <div style="font-size:11pt;color:#e8f1f3">Conceptual Framework and Flowcharts · Design v2 · 29 October 2026</div>
+</div>
+<div style="height:2mm;background:#EA9940;border-radius:1mm;margin:-4mm 0 6mm"></div>
+<section>
+  <h1>1. Conceptual framework</h1>
+  <p>The study follows the Input–Process–Output (IPO) model. Inputs from the four user groups are processed by the distributed nodes using parallel and concurrency-safe techniques, producing consistent bookings, confirmations and reports. Evaluation results feed back into the design.</p>
+  <div class="ipo">
+    <div class="box i"><h4>INPUT</h4>
+      <ul>
+        <li><b>Customers:</b> date, number of guests, chosen package, guest name, e-mail, phone, ID type and last 4 digits, (simulated) payment</li>
+        <li><b>Receptionists:</b> walk-in guest details, arrival look-ups, unavailable services and dates</li>
+        <li><b>Node admins:</b> services, capacities, packages, prices, receptionist accounts</li>
+        <li><b>Central admin:</b> island registrations, node admin accounts, report requests</li>
+        <li><b>Network state:</b> island online / offline</li>
+      </ul>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="box p"><h4>PROCESS</h4>
+      <ul>
+        <li><b>Parallel search fan-out:</b> central queries all island nodes concurrently via gRPC with deadlines</li>
+        <li><b>Atomic hold / confirm:</b> island reserves every service of a package in one transaction (guarded updates)</li>
+        <li><b>Saga:</b> hold → pay → confirm, with release / expiry as compensation</li>
+        <li><b>Idempotent requests:</b> retries never create duplicates</li>
+        <li><b>Single-writer ownership</b> of each data item</li>
+        <li><b>Outbox synchronisation</b> island → central; directory pull central → island</li>
+        <li><b>Offline operation</b> of island nodes (partition tolerance)</li>
+        <li><b>Parallel report generation</b> with worker threads</li>
+      </ul>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="box o"><h4>OUTPUT</h4>
+      <ul>
+        <li>Confirmed bookings with confirmation information (reference, package, dates, amount)</li>
+        <li>Inventory that is never oversold</li>
+        <li>Guests checked in exactly once</li>
+        <li>Up-to-date catalog and availability</li>
+        <li>Province-wide booking, occupancy and sales reports</li>
+        <li>Measured results: speedup, throughput, latency, oversell count (0)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="feedback"><b>Feedback / evaluation:</b> load tests, race tests, partition (offline) tests, speedup and efficiency measurements, and user feedback from receptionists and admins are used to refine the design.</div>
+
+  </section>
+<section class="section">
+  <h2 style="margin-top:0">1.1 Key concepts applied</h2>
+  <table>
+    <thead><tr><th style="width:32%">Concept</th><th>How it appears in the system</th></tr></thead>
+    <tbody>
+      <tr><td>Distribution / data partitioning</td><td>Data partitioned by island; each node stores and owns its own island's data.</td></tr>
+      <tr><td>Remote procedure call</td><td>gRPC contract (<code>proto/booking.proto</code>) between central and island nodes.</td></tr>
+      <tr><td>Parallelism (task)</td><td>Concurrent RPCs to all islands during search; total time ≈ slowest island instead of the sum.</td></tr>
+      <tr><td>Parallelism (data)</td><td>Report data split across worker threads (1 / 2 / 4 / 8) and merged.</td></tr>
+      <tr><td>Concurrency control</td><td>Atomic conditional updates and transactions; single writer per data item.</td></tr>
+      <tr><td>Fault tolerance / partition</td><td>Deadlines, offline mode, outbox with retries, de-duplication by event id.</td></tr>
+      <tr><td>Consistency trade-off (CAP)</td><td>Consistency chosen over availability for online sales of an unreachable island.</td></tr>
+    </tbody>
+  </table>
+</section>
+<section class="section">
+  <h1>2. Flowcharts</h1>
+  <h2>2.1 Online booking (customer → central → island)</h2>
+  <h3>Part 1 — Parallel search</h3>
+  <div class="diagram" id="d-online-a"></div>
+  <div class="caption">Figure 1a. Central asks every island at the same time; an island that misses the deadline is shown as unavailable</div>
+</section>
+<section class="section">
+  <h3 style="margin-top:0">Part 2 — Hold, pay, confirm (saga)</h3>
+  <div class="diagram xtall" id="d-online"></div>
+  <div class="caption">Figure 1b. The owning island reserves all services atomically; release or expiry undoes the hold</div>
+</section>
+<section class="section">
+  <h2>2.2 Walk-in booking (receptionist)</h2>
+  <div class="note">Online and walk-in bookings both go through the island node that owns the inventory, so the race for the last unit is decided by one atomic update on one database.</div>
+  <div class="diagram tall" id="d-walkin"></div>
+  <div class="caption">Figure 2. Walk-in booking from the same inventory as online booking</div>
+</section>
+<section class="section">
+  <h2>2.3 Arrival confirmation (no tickets)</h2>
+  <div class="diagram xtall" id="d-arrival"></div>
+  <div class="caption">Figure 3. The guest shows the confirmation information received after payment; staff verify the ID</div>
+</section>
+<section class="section">
+  <h2>2.4 Mark service unavailable (receptionist)</h2>
+  <div class="diagram mid" id="d-block"></div>
+  <div class="caption">Figure 4. Manual input of unavailable services (repairs, weather, boat not running)</div>
+</section>
+<section class="section">
+  <h2 style="margin-top:0">2.5 Catalog change by node admin</h2>
+  <div class="diagram" id="d-catalog"></div>
+  <div class="caption">Figure 5. Changes are saved locally first (works offline), then synchronised to central</div>
+</section>
+<section class="section">
+  <h2>2.6 Island registration and accounts</h2>
+  <div class="diagram" id="d-accounts" ></div>
+  <div class="caption">Figure 6. Central admin registers islands and node admins; node admins create receptionists (dark = central, teal = island)</div>
+  <h3>Login</h3>
+  <p>Passwords are stored only as salted scrypt hashes. Each node verifies logins against its local copy of the accounts, so staff can log in while the island is offline. Sessions expire after inactivity; disabled accounts stop working at the next directory pull.</p>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+// Diagram sources, kept in JS strings so HTML parsing never touches the Mermaid syntax.
+const D = {};
+
+D['d-arch'] = `flowchart TB
+  APP["Customer phones<br/>Expo mobile app"]
+  subgraph L1["Laptop 1 - Central node"]
+    direction LR
+    API["HTTP API<br/>search, book, cancel"]
+    SAGA["Booking saga +<br/>parallel fan-out"]
+    ADM["Central admin panel<br/>islands, accounts, reports"]
+  end
+  SB[("Supabase<br/>PostgreSQL")]
+  B["Laptop 2 - Biliran node<br/>server + SQLite + console"]
+  M["Laptop 3 - Maripipi node<br/>server + SQLite + console"]
+  H["Laptop 4 - Higatangan node<br/>server + SQLite + console"]
+  APP -- "HTTP / JSON" --> API
+  API --- SAGA
+  ADM --- SAGA
+  SAGA -- "SQL" --> SB
+  SAGA <-- "gRPC" --> B
+  SAGA <-- "gRPC" --> M
+  SAGA <-- "gRPC" --> H
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class API,ADM,SAGA central
+  class B,M,H island
+  class APP app`;
+
+D['d-usecase'] = `%%{init: {"flowchart": {"nodeSpacing": 6, "rankSpacing": 70}}}%%
+flowchart LR
+  CU(["Customer"]):::actor
+  RC(["Receptionist"]):::actor
+  NA(["Node admin"]):::actor
+  CA(["Central admin"]):::actor
+  subgraph SYS["Biliran Resort and Tour Booking System"]
+    U1(["Search packages"])
+    U2(["Book and pay online"])
+    U3(["View confirmation info"])
+    U4(["Look up / cancel booking"])
+    U5(["Log in to node console"])
+    U6(["Walk-in booking"])
+    U7(["Confirm arrival + ID check"])
+    U8(["Mark service unavailable"])
+    U9(["Manage services and packages"])
+    U10(["Set prices"])
+    U11(["Manage receptionist accounts"])
+    U12(["Register islands"])
+    U13(["Manage node admin accounts"])
+    U14(["View all bookings"])
+    U15(["Generate reports"])
+  end
+  CU --- U1 & U2 & U3 & U4
+  RC --- U5 & U6 & U7 & U8
+  NA --- U9 & U10 & U11
+  NA -. "inherits" .-> RC
+  CA --- U12 & U13 & U14 & U15
+  classDef actor fill:#307082,stroke:#12212E,color:#ffffff
+  classDef default fill:#ffffff,stroke:#6CA3A2,color:#12212E`;
+
+D['d-online-a'] = `flowchart TD
+  A(["Customer opens the app"]) --> B["Enter date and number of guests"]
+  B --> C["Central queries all island nodes<br/>in parallel, with a deadline"]
+  C --> D{"Island answered<br/>before deadline?"}
+  D -- "No" --> E["Mark that island's packages<br/>unavailable online"]
+  D -- "Yes" --> F["Island returns its<br/>available packages"]
+  E --> G["Show merged results"]
+  F --> G
+  G --> H(["Customer selects a package<br/>continue in part 2"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-online'] = `%%{init: {"flowchart": {"nodeSpacing": 25, "rankSpacing": 30}}}%%
+flowchart TD
+  H(["Package selected,<br/>guest details entered"]) --> I["Central sends HoldBooking to the owning island"]
+  I --> J{"All services free?<br/>atomic check on island"}
+  J -- "No" --> K(["Show sold out;<br/>back to results"])
+  J -- "Yes" --> L["Booking HELD, 10-minute timer"]
+  L --> M["Customer pays - simulated"]
+  M --> N{"Payment<br/>successful?"}
+  N -- "No" --> O(["ReleaseHold - units returned;<br/>back to results"])
+  N -- "Yes" --> P{"Hold still<br/>valid?"}
+  P -- "No" --> Q(["Reverse payment, show expired;<br/>back to results"])
+  P -- "Yes" --> R["ConfirmBooking - CONFIRMED"]
+  R --> S["Island outbox sends booking copy to central"]
+  R --> T(["App shows confirmation info<br/>reference, package, dates, amount"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  classDef good fill:#E3EEF0,stroke:#307082,color:#12212E
+  class J,N,P dec
+  class R,T good`;
+
+D['d-walkin'] = `flowchart TD
+  A(["Guest at the front desk"]) --> B["Receptionist logs in to node console"]
+  B --> C["Select package, date and guests"]
+  C --> D{"Available?"}
+  D -- "No" --> E["Offer another date or package"]
+  E --> C
+  D -- "Yes" --> F["Enter guest name and ID details"]
+  F --> G["Collect payment at the desk"]
+  G --> H["Atomic booking on island - CONFIRMED"]
+  H --> I(["Give guest the booking information"])
+  H --> J{"Connected to<br/>central?"}
+  J -- "Yes" --> K["Outbox sends copy to central"]
+  J -- "No" --> L["Event waits in the outbox"]
+  L --> M["Sent automatically on reconnection"]
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D,J dec`;
+
+D['d-arrival'] = `%%{init: {"flowchart": {"nodeSpacing": 20, "rankSpacing": 28}}}%%
+flowchart TD
+  A(["Guest arrives and shows the confirmation info"]) --> B["Receptionist searches by reference or name"]
+  B --> C{"Booking found<br/>on this island?"}
+  C -- "No" --> D["Check island and date;<br/>contact central admin if needed"]
+  C -- "Yes" --> E{"Booking<br/>status"}
+  E -- "CHECKED_IN" --> F["Already checked in - stop"]
+  E -- "CANCELLED / NO_SHOW" --> G["Not valid - apply policy"]
+  E -- "CONFIRMED" --> H["Compare physical ID with name,<br/>ID type and last 4 digits"]
+  H --> I{"ID matches?"}
+  I -- "No" --> J["Refuse; escalate to node admin"]
+  I -- "Yes" --> K["Confirm arrival:<br/>CONFIRMED to CHECKED_IN, once only"]
+  K --> L{"Update<br/>succeeded?"}
+  L -- "No, another desk was first" --> F
+  L -- "Yes" --> M(["Guest checked in; event queued for central"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class C,E,I,L dec`;
+
+D['d-block'] = `flowchart TD
+  A(["Problem with a service:<br/>repair, weather, boat not running"]) --> B["Receptionist selects service and dates"]
+  B --> C["Enter number of units to block, or block all"]
+  C --> D{"booked + blocked + n<br/>within capacity?"}
+  D -- "Yes" --> E["Units blocked on the island"]
+  E --> F(["Search and walk-in see the change immediately"])
+  D -- "No" --> G["Show bookings affected"]
+  G --> H["Contact guests: move date, change package or refund"]
+  H --> C
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-catalog'] = `flowchart TD
+  A(["Node admin edits service,<br/>package or price"]) --> B["Validate"]
+  B --> C["Save in island DB + outbox event<br/>in one transaction"]
+  C --> D{"Connected?"}
+  D -- "Yes" --> E["Central updates its catalog copy"]
+  D -- "No" --> F["Queued until reconnection"]
+  F --> E
+  E --> G(["Visible in app search"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-accounts'] = `%%{init: {"flowchart": {"rankSpacing": 26}}}%%
+flowchart TD
+  A(["Central: central admin logs in"]) --> B["Central: register island<br/>id, name, address, node address"]
+  B --> C["Central: create node admin account<br/>password hashed"]
+  C --> D["Island: node starts or reconnects"]
+  D --> E["Island: PullDirectory<br/>registration + admin accounts"]
+  E --> F["Island: node admin logs in<br/>checked locally"]
+  F --> G["Island: node admin creates<br/>receptionist accounts"]
+  G --> H["Island: outbox copies receptionist<br/>accounts to central"]
+  H --> I(["Central: admin sees all staff per island"])
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  class A,B,C,I central
+  class D,E,F,G,H island`;
+
+D['d-seq-online'] = `%%{init: {"sequence": {"actorMargin": 12, "width": 110, "boxMargin": 6, "messageMargin": 28, "noteMargin": 6}}}%%
+sequenceDiagram
+  autonumber
+  actor C as App
+  participant CE as Central
+  participant B as Biliran
+  participant M as Maripipi
+  participant H as Higatangan
+  participant DB as Supabase
+  C->>CE: Search(date, guests)
+  par Parallel fan-out
+    CE->>B: SearchAvailability
+  and
+    CE->>M: SearchAvailability
+  and
+    CE->>H: SearchAvailability
+  end
+  B-->>CE: packages
+  M-->>CE: packages
+  H-->>CE: packages
+  CE-->>C: merged results
+  C->>CE: Book(package, guest, key)
+  CE->>M: HoldBooking
+  M-->>CE: HELD, expires in 10 min
+  C->>CE: Pay (simulated)
+  CE->>M: ConfirmBooking
+  M-->>CE: CONFIRMED
+  CE-->>C: confirmation info (reference)
+  M-)CE: PushEvents (outbox)
+  CE->>DB: store booking copy`;
+
+D['d-seq-offline'] = `sequenceDiagram
+  autonumber
+  participant CE as Central
+  participant I as Island node
+  actor R as Receptionist
+  Note over CE,I: Link to island lost (partition)
+  CE-xI: SearchAvailability (deadline exceeded)
+  CE->>CE: Show island packages as unavailable online
+  R->>I: Log in (checked locally)
+  R->>I: Walk-in booking / confirm arrival
+  I->>I: Commit change + outbox event
+  Note over CE,I: Link restored
+  I->>CE: PushEvents (queued events)
+  CE-->>I: Ack (duplicates ignored by event_id)
+  I->>CE: PullDirectory(since)
+  CE-->>I: Account and registration changes
+  CE->>I: SearchAvailability
+  I-->>CE: packages (available online again)`;
+
+D['d-state'] = `stateDiagram-v2
+  direction LR
+  [*] --> HELD: online hold
+  [*] --> CONFIRMED: walk-in, paid at desk
+  HELD --> CONFIRMED: payment OK
+  HELD --> RELEASED: payment failed or cancelled
+  HELD --> EXPIRED: 10 minutes passed
+  CONFIRMED --> CHECKED_IN: arrival confirmed
+  CONFIRMED --> CANCELLED: cancelled
+  CONFIRMED --> NO_SHOW: date passed
+  CHECKED_IN --> [*]
+  CANCELLED --> [*]
+  NO_SHOW --> [*]
+  RELEASED --> [*]
+  EXPIRED --> [*]`;
+
+D['d-erd-island'] = `erDiagram
+  ISLAND_INFO ||--o{ SERVICE : offers
+  ISLAND_INFO ||--o{ PACKAGE : sells
+  SERVICE ||--o{ INVENTORY_DAY : "capacity per day"
+  PACKAGE ||--|{ PACKAGE_ITEM : contains
+  SERVICE ||--o{ PACKAGE_ITEM : "used by"
+  PACKAGE ||--o{ BOOKING : "booked as"
+  BOOKING ||--|{ BOOKING_LINE : reserves
+  SERVICE ||--o{ BOOKING_LINE : "units of"
+  ACCOUNT ||--o{ BOOKING : "creates walk-in"
+  ISLAND_INFO {
+    text id PK
+    text name
+    text address
+  }
+  SERVICE {
+    text id PK
+    text kind "room tour boat meal"
+    text name
+    int capacity
+    bool active
+  }
+  INVENTORY_DAY {
+    text service_id PK
+    date day PK
+    int capacity
+    int booked
+    int blocked
+  }
+  PACKAGE {
+    text id PK
+    text name
+    int price_php
+    int nights
+    int max_guests
+    bool active
+  }
+  PACKAGE_ITEM {
+    text package_id PK
+    text service_id PK
+    int qty
+    bool per_guest
+  }
+  BOOKING {
+    text id PK
+    text reference UK
+    text request_id UK
+    text source "ONLINE WALKIN"
+    text package_id FK
+    date day
+    int guests
+    text guest_name
+    text email
+    text phone
+    text id_type
+    text id_last4
+    int total_php
+    text status
+    datetime hold_expires_at
+    text created_by FK
+  }
+  BOOKING_LINE {
+    text booking_id PK
+    text service_id PK
+    date day PK
+    int qty
+  }
+  ACCOUNT {
+    text id PK
+    text username UK
+    text role "node_admin receptionist"
+    text password_hash
+    bool active
+    text owner "central island"
+  }
+  OUTBOX {
+    text event_id PK
+    text type
+    text payload
+    datetime created_at
+    datetime sent_at
+  }`;
+
+D['d-erd-central'] = `%%{init: {"er": {"layoutDirection": "LR"}}}%%
+erDiagram
+  ISLAND ||--o{ ACCOUNT : employs
+  ISLAND ||--o{ SERVICE_COPY : "catalog copy"
+  ISLAND ||--o{ PACKAGE_COPY : "catalog copy"
+  ISLAND ||--o{ BOOKING_COPY : "booking copy"
+  ISLAND ||--o{ ISLAND_EVENT : sends
+  ISLAND {
+    text id PK
+    text name
+    text address
+    text node_host
+    int grpc_port
+    bool active
+  }
+  ACCOUNT {
+    uuid id PK
+    text username UK
+    text role "central_admin node_admin receptionist"
+    text island_id FK
+    text password_hash
+    bool active
+    int version
+  }
+  SERVICE_COPY {
+    text id PK
+    text island_id FK
+    text kind
+    text name
+    int capacity
+  }
+  PACKAGE_COPY {
+    text id PK
+    text island_id FK
+    text name
+    int price_php
+    int max_guests
+  }
+  BOOKING_COPY {
+    text id PK
+    text reference UK
+    text island_id FK
+    text package_id
+    date day
+    int guests
+    text email
+    int total_php
+    text status
+  }
+  ISLAND_EVENT {
+    text event_id PK
+    text island_id FK
+    text type
+    jsonb payload
+    timestamptz received_at
+  }`;
+
+D['d-gantt'] = `gantt
+  dateFormat YYYY-MM-DD
+  axisFormat %b %d
+  section Design
+  Design v2 and document        :done, d1, 2026-10-29, 2d
+  Hotspot test with 8 devices   :h1, 2026-10-30, 3d
+  section Island node
+  Data model, packages, hold-confirm :a1, 2026-10-30, 5d
+  Accounts, login, sync         :a2, after a1, 6d
+  section Central
+  gRPC v2, fan-out, saga        :c1, 2026-10-30, 6d
+  Central admin panel           :c2, after c1, 6d
+  section Mobile app
+  Customer screens              :b1, 2026-11-01, 10d
+  section Consoles and tests
+  Node console UI               :t1, 2026-11-02, 8d
+  Parallel reports, load tests  :t2, 2026-11-09, 6d
+  section Finish
+  Integration and offline demo  :i1, 2026-11-12, 4d
+  Report and charts             :r1, 2026-11-15, 4d
+  Rehearsal                     :r2, 2026-11-19, 1d
+  Deadline                      :milestone, m1, 2026-11-20, 0d`;
+
+// Render every diagram, then flag the page as ready (used when printing).
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Segoe UI", Arial, sans-serif',
+  themeVariables: {
+    fontSize: '14px',
+    primaryColor: '#E3EEF0', primaryBorderColor: '#307082', primaryTextColor: '#12212E',
+    secondaryColor: '#FBEBD9', tertiaryColor: '#F6F4EF', lineColor: '#307082',
+    clusterBkg: '#F6F4EF', clusterBorder: '#6CA3A2', noteBkgColor: '#FBEBD9', noteBorderColor: '#EA9940',
+    actorBkg: '#E3EEF0', actorBorder: '#307082', signalColor: '#12212E', signalTextColor: '#12212E',
+    labelBoxBkgColor: '#E3EEF0', labelBoxBorderColor: '#307082',
+    taskBkgColor: '#6CA3A2', taskBorderColor: '#307082', doneTaskBkgColor: '#307082', critBkgColor: '#EA9940',
+    sectionBkgColor: '#F6F4EF', altSectionBkgColor: '#ffffff', gridColor: '#cfd8d6', todayLineColor: '#EA9940'
+  },
+  flowchart: { htmlLabels: true, curve: 'basis', useMaxWidth: true },
+  sequence: { useMaxWidth: true, mirrorActors: false },
+  er: { useMaxWidth: true },
+  gantt: { useMaxWidth: true, useWidth: 680, barHeight: 20, barGap: 5, fontSize: 12, sectionFontSize: 12, leftPadding: 150 }
+});
+(async () => {
+  for (const [id, src] of Object.entries(D)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    try {
+      const { svg } = await mermaid.render(id + '-svg', src);
+      el.innerHTML = svg;
+    } catch (e) {
+      el.innerHTML = '<pre style="color:#b4432f;text-align:left">Diagram error in ' + id + ': ' + e.message + '</pre>';
+      console.error(id, e);
+    }
+  }
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>
