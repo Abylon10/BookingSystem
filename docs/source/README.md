@@ -5,6 +5,7 @@
 | `design.html` | `../System-Design-and-Initial-Considerations.pdf` — full design document |
 | `flowcharts.html` | `../Framework-and-Flowcharts.pdf` — conceptual framework and flowcharts only |
 | `slides.html` | `../Framework-Review-Slides.pdf` — short review slides for the framework defense (16:9) |
+| `framework.html` + slides | `../Task-2.3-Initial-System-Framework.pdf` — **task 2.3 upload**: framework document + review slides in one file (merged with `merge.py`) |
 | `tracker.html` | `../Project-Development-Tracker.pdf` — filled-in development tracker (A4 landscape) |
 
 Text is plain HTML. Diagrams are Mermaid source in the `D[...]` strings near the bottom of each file;

@@ -87,7 +87,7 @@
         <tr><td>1.1, 1.1.1, 1.2</td><td><b>docs/System-Design-and-Initial-Considerations.pdf</b> §1 Introduction, §2 Objectives, §3 Scope and limitations, §6 Roles, §4.1 and §13 parallel/distributed components; §18 team roles</td></tr>
         <tr><td>2.1</td><td>Same document §4 conceptual framework (IPO), §5 architecture diagram, §8 flowcharts, §9 sequence diagrams; short version <b>docs/Framework-and-Flowcharts.pdf</b></td></tr>
         <tr><td>2.2</td><td>Same document §5.1 module list, §5.2 interfaces, §5.3 data flow, §11 data model (ERD), §15 technology stack; gRPC contract <b>proto/booking.proto</b></td></tr>
-        <tr><td>2.3</td><td><b>docs/Framework-Review-Slides.pdf</b> (short review slides) + the framework document above</td></tr>
+        <tr><td>2.3</td><td><b>docs/Task-2.3-Initial-System-Framework.pdf</b> — single upload: framework document, architecture diagram, workflow, module list, technology stack, and the 11 short review slides (also separately: docs/Framework-Review-Slides.pdf)</td></tr>
         <tr><td>3.1</td><td>Baseline prototype, source version git tag <b>baseline-v1-2026-10-29</b>. Screenshot: <b>docs/evidence/2026-10-29-baseline-island-console.png</b> (right)</td></tr>
         <tr><td>4.1, 4.2, 5.2</td><td>Preliminary measurements from the prototype (local laptop, 150 ms simulated link): parallel search 2.93× faster than sequential (180 ms vs 527 ms, 10 runs each); 30 concurrent bookings for 6 rooms → exactly 6 booked, 0 oversold; parallel double check-in → exactly one success</td></tr>
         <tr><td>6.1</td><td><b>README.md</b> (setup), <b>DESIGN.md</b> (v2 design), every code block commented</td></tr>
@@ -131,7 +131,7 @@ const tasks = [
     'Design doc §5.1–5.3, §11, §15; proto/booking.proto', 90),
   T('2.3', 'Submit and defend the initial system framework for instructor approval', 'Whole team', '10-30', '10-30',
     'Prepared: framework document (architecture diagram, workflow, module list, interfaces, data flow, technology stack) and short review slides. Defense scheduled 30 Oct; approval pending.',
-    'Framework-Review-Slides.pdf', 50),
+    'Upload: Task-2.3-Initial-System-Framework.pdf (framework + slides, one file)', 50),
   P('PHASE 3: Core System Development'),
   T('3.1', 'Develop the basic functional system (baseline version)', 'Member A + Member B', '10-29', '11-03',
     'Baseline v1 runs: 3 island nodes + central over gRPC, parallel search, walk-in booking from the island inventory, check-in once only, outbox sync to central, Supabase online booking. Rework to v2 (packages, hold → pay → confirm, no tickets) started.',
