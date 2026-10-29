@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Biliran Resort &amp; Tour Booking System — System Design and Initial Considerations</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8.5pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+    @bottom-left { content: "Biliran Resort & Tour Booking System — Design v2"; font: 8.5pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+  }
+  @page cover { margin: 0; @bottom-center { content: none; } @bottom-left { content: none; } }
+  :root { --ink:#12212E; --primary:#307082; --secondary:#6CA3A2; --sand:#ECE7DC; --accent:#EA9940; --muted:#5B6B75; --line:#cfd8d6; --tint:#E6EEF0; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font: 10.5pt/1.5 "Segoe UI", Arial, sans-serif; color: var(--ink); }
+  h1 { font-size: 19pt; color: var(--primary); margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 2px solid var(--accent); break-after: avoid; }
+  h2 { font-size: 13pt; color: var(--primary); margin: 6mm 0 2mm; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  .section { break-before: page; }
+  .muted { color: var(--muted); }
+  .small { font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0 4mm; font-size: 9.3pt; break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { background: var(--primary); color: #fff; text-align: left; font-weight: 600; padding: 1.6mm 2mm; }
+  td { padding: 1.5mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #f6f4ef; }
+  code { font-family: Consolas, monospace; font-size: 9pt; background: var(--sand); padding: 0 1mm; border-radius: 1mm; }
+  .note { background: var(--tint); border-left: 3px solid var(--primary); padding: 2.5mm 3.5mm; margin: 2mm 0 4mm; font-size: 9.5pt; }
+  .warn { background: #FBEBD9; border-left: 3px solid var(--accent); padding: 2.5mm 3.5mm; margin: 2mm 0 4mm; font-size: 9.5pt; }
+  .diagram { text-align: center; margin: 2mm 0 3mm; break-inside: avoid; }
+  .diagram svg { max-width: 100% !important; height: auto; }
+  .diagram.tall svg { max-height: 205mm; width: auto; }
+  .diagram.mid svg { max-height: 150mm; width: auto; }
+  #d-state svg { max-height: 90mm; width: auto; }
+  .diagram.xtall svg { max-height: 232mm; width: auto; }
+  #d-online-a svg { max-height: 175mm; width: auto; }
+  #d-accounts svg { max-height: 190mm; width: auto; }
+  #d-erd-central svg { max-height: 238mm; width: auto; }
+  #d-erd-island svg { max-height: 192mm; width: auto; }
+  #d-catalog svg { max-height: 215mm; width: auto; }
+  .caption { text-align: center; font-size: 9pt; color: var(--muted); margin: -1mm 0 4mm; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .tag { display: inline-block; padding: 0 2mm; border-radius: 3mm; font-size: 8.5pt; font-weight: 600; }
+
+  /* Cover */
+  .cover { page: cover; height: 297mm; display: flex; flex-direction: column; }
+  .cover-top { background: var(--primary); color: #fff; padding: 40mm 22mm 18mm; }
+  .cover-top .kicker { letter-spacing: .5mm; text-transform: uppercase; font-size: 10pt; color: #d6e6ea; }
+  .cover-top h1 { color: #fff; border: none; font-size: 28pt; line-height: 1.2; margin: 4mm 0 5mm; padding: 0; }
+  .cover-top .sub { font-size: 13pt; color: #e8f1f3; max-width: 150mm; }
+  .cover-band { height: 5mm; background: var(--accent); }
+  .cover-body { padding: 14mm 22mm; flex: 1; background: var(--sand); display: flex; flex-direction: column; justify-content: space-between; }
+  .cover-body table td { background: transparent !important; border-bottom: 1px solid #d8d1c2; font-size: 10.5pt; }
+  .cover-body table td:first-child { width: 45mm; color: var(--muted); }
+  .palette { display: flex; gap: 0; height: 9mm; border-radius: 2mm; overflow: hidden; }
+  .palette div { flex: 1; }
+
+  /* IPO framework */
+  .ipo { display: grid; grid-template-columns: 1fr 9mm 1.25fr 9mm 1fr; align-items: stretch; margin: 3mm 0 0; }
+  .ipo .box { border: 1.5px solid var(--primary); border-radius: 3mm; overflow: hidden; background: #fff; }
+  .ipo .box h4 { margin: 0; padding: 2mm; text-align: center; color: #fff; background: var(--primary); font-size: 11pt; letter-spacing: .4mm; }
+  .ipo .box.p h4 { background: var(--ink); }
+  .ipo .box.o h4 { background: var(--accent); color: var(--ink); }
+  .ipo .box ul { margin: 2.5mm 2.5mm 2.5mm 0; padding-left: 6mm; font-size: 9pt; line-height: 1.4; }
+  .ipo .arrow { display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 18pt; font-weight: 700; }
+  .feedback { margin: 2mm 0 0; border: 1.5px dashed var(--secondary); border-radius: 3mm; padding: 2mm 3mm; text-align: center; font-size: 9pt; color: var(--muted); }
+  .feedback b { color: var(--ink); }
+  .toc { columns: 2; column-gap: 10mm; font-size: 10pt; }
+  .toc div { break-inside: avoid; padding: .6mm 0; border-bottom: 1px dotted var(--line); }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover">
+  <div class="cover-top">
+    <div class="kicker">Parallel &amp; Distributed Computing · Class Project</div>
+    <h1>Biliran Resort &amp; Tour<br>Booking System</h1>
+    <div class="sub">A parallel and distributed online and face-to-face booking system for resort and tour packages across the islands of Biliran, Philippines.</div>
+  </div>
+  <div class="cover-band"></div>
+  <div class="cover-body">
+    <div>
+      <h2 style="margin-top:0">System Design and Initial Considerations</h2>
+      <table>
+        <tr><td>Document</td><td>Design v2 — flowcharts, conceptual framework, architecture, data model, requirements, risks, plan</td></tr>
+        <tr><td>Version / date</td><td>v2.0 · 29 October 2026 (incorporates adviser revisions)</td></tr>
+        <tr><td>Submission deadline</td><td>20 November 2026</td></tr>
+        <tr><td>Team</td><td>[Member 1 — Central &amp; integration] · [Member 2 — Island node] · [Member 3 — Mobile app] · [Member 4 — Consoles, reports &amp; testing]</td></tr>
+        <tr><td>Adviser</td><td>[Adviser name]</td></tr>
+        <tr><td>Repository</td><td>github.com/Abylon10/BookingSystem</td></tr>
+      </table>
+    </div>
+    <div>
+      <p class="small muted" style="margin-bottom:2mm">Colour palette used across all user interfaces</p>
+      <div class="palette">
+        <div style="background:#12212E"></div><div style="background:#307082"></div><div style="background:#6CA3A2"></div><div style="background:#ECE7DC;border:1px solid #d8d1c2"></div><div style="background:#EA9940"></div>
+      </div>
+      <p class="small muted" style="margin-top:2mm">#12212E · #307082 · #6CA3A2 · #ECE7DC · #EA9940 — Places are real; the resorts and tour operators named in this document are fictional.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CONTENTS ============================ -->
+<section class="section">
+  <h1>Contents</h1>
+  <div class="toc">
+    <div>1. Introduction</div><div>2. Objectives</div><div>3. Scope and limitations</div><div>4. Conceptual framework (IPO)</div>
+    <div>5. System architecture</div><div>6. Users, roles and data ownership</div><div>7. Use case diagram</div>
+    <div>8. Flowcharts</div><div>&nbsp;&nbsp;8.1 Online booking</div><div>&nbsp;&nbsp;8.2 Walk-in booking</div><div>&nbsp;&nbsp;8.3 Arrival confirmation</div>
+    <div>&nbsp;&nbsp;8.4 Mark service unavailable</div><div>&nbsp;&nbsp;8.5 Catalog change by node admin</div><div>&nbsp;&nbsp;8.6 Island registration and accounts</div>
+    <div>9. Sequence diagrams</div><div>10. Booking life cycle</div><div>11. Data model (ERD)</div><div>12. Concurrency, consistency and offline operation</div>
+    <div>13. Parallelism and experiments</div><div>14. Requirements</div><div>15. Technology and environment</div><div>16. Other initial considerations</div>
+    <div>17. Risks and mitigation</div><div>18. Project plan and team</div><div>19. Open questions for the adviser</div>
+  </div>
+
+  <h1 style="margin-top:9mm">1. Introduction</h1>
+  <h2>1.1 Background</h2>
+  <p>Biliran is an island province in Eastern Visayas with tourism spread across the main island and smaller islands such as Maripipi and Higatangan. Resorts and tour operators on these islands sell to two kinds of customers at once: travellers who book ahead online, and walk-in guests who arrive at the front desk or the pier. Connectivity between the smaller islands and the mainland can be slow or interrupted, yet front desks must keep operating.</p>
+  <h2>1.2 Problem</h2>
+  <ul>
+    <li><b>Double booking:</b> online and walk-in sales draw from the same rooms, seats and boat trips; without coordination the last unit can be sold twice.</li>
+    <li><b>Unreliable links:</b> a centralised system stops the island front desk whenever the internet link drops.</li>
+    <li><b>Fragmented management:</b> each resort maintains its own services and prices, while the province-wide view (registrations, accounts, reports) needs one place.</li>
+    <li><b>Slow aggregate queries:</b> searching or reporting across all islands one after another grows with every island added.</li>
+  </ul>
+  <h2>1.3 Proposed solution</h2>
+  <p>A distributed system in which <b>each island runs its own node</b> that owns its services, packages, inventory and bookings, and a <b>central node</b> that serves the customer mobile app, registers islands and manages accounts. Nodes communicate by remote procedure calls (gRPC). Searches and reports run <b>in parallel</b> across nodes and worker threads, and every write is designed so that concurrent requests cannot oversell.</p>
+</section>
+
+<!-- ============================ OBJECTIVES / SCOPE ============================ -->
+<section class="section">
+  <h1>2. Objectives</h1>
+  <h2>2.1 General objective</h2>
+  <p>To design and implement a parallel and distributed booking system for resort and tour packages in Biliran that supports online and face-to-face booking from a shared inventory without double booking, and continues to operate on an island when its connection to the central node is lost.</p>
+  <h2>2.2 Specific objectives</h2>
+  <ol>
+    <li>Develop a mobile application (Expo / React Native) for customers to search packages, book, pay (simulated) and view their booking confirmation.</li>
+    <li>Develop an island node with a web console for receptionists (walk-in booking, arrival confirmation, marking services unavailable) and node admins (services, packages, prices, receptionist accounts).</li>
+    <li>Develop a central node with an admin panel for island registration, account management, and province-wide bookings and reports.</li>
+    <li>Guarantee consistency under concurrency: no inventory unit is sold twice, and each booking is checked in at most once.</li>
+    <li>Support partition tolerance: island operations, staff logins and local changes keep working offline and synchronise automatically on reconnection.</li>
+    <li>Apply and measure parallelism: parallel search fan-out across nodes and parallel report generation with worker threads, compared against sequential baselines.</li>
+  </ol>
+</section>
+
+<section class="section">
+  <h1>3. Scope and limitations</h1>
+  <h2>3.1 Scope</h2>
+  <ul>
+    <li>Three island nodes (Biliran mainland, Maripipi, Higatangan) and one central node, demonstrated on four laptops connected by a phone hotspot.</li>
+    <li>Package-based booking. Each package belongs to one island and is composed of services (room, tour, boat, meal).</li>
+    <li>Online booking with a hold → pay → confirm flow; walk-in booking at the node console.</li>
+    <li>Arrival confirmation by booking reference or name plus physical ID check (no tickets or QR codes).</li>
+    <li>Manual blocking of unavailable services by the receptionist.</li>
+    <li>Roles: central admin, node admin, receptionist, customer.</li>
+    <li>Reports: bookings, occupancy and sales per island and package.</li>
+  </ul>
+  <h2>3.2 Limitations</h2>
+  <ul>
+    <li><b>Payment is simulated.</b> No real payment gateway (e.g. GCash, cards) is integrated.</li>
+    <li>Packages cannot combine services from different islands.</li>
+    <li>While an island is offline, its packages are <b>not sold online</b> (see §12.3).</li>
+    <li>Customers have no accounts; bookings are looked up by reference and e-mail.</li>
+    <li>Only the last four digits of a guest's ID are recorded; identity is verified visually by staff.</li>
+    <li>Demonstrated on a local hotspot network; production hosting, TLS between nodes and backups are out of scope.</li>
+    <li>Resorts and tour operators are fictional; prices and capacities are sample data.</li>
+  </ul>
+</section>
+
+<!-- ============================ IPO ============================ -->
+<section class="section">
+  <h1>4. Conceptual framework</h1>
+  <p>The study follows the Input–Process–Output (IPO) model. Inputs from the four user groups are processed by the distributed nodes using parallel and concurrency-safe techniques, producing consistent bookings, confirmations and reports. Evaluation results feed back into the design.</p>
+  <div class="ipo">
+    <div class="box i"><h4>INPUT</h4>
+      <ul>
+        <li><b>Customers:</b> date, number of guests, chosen package, guest name, e-mail, phone, ID type and last 4 digits, (simulated) payment</li>
+        <li><b>Receptionists:</b> walk-in guest details, arrival look-ups, unavailable services and dates</li>
+        <li><b>Node admins:</b> services, capacities, packages, prices, receptionist accounts</li>
+        <li><b>Central admin:</b> island registrations, node admin accounts, report requests</li>
+        <li><b>Network state:</b> island online / offline</li>
+      </ul>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="box p"><h4>PROCESS</h4>
+      <ul>
+        <li><b>Parallel search fan-out:</b> central queries all island nodes concurrently via gRPC with deadlines</li>
+        <li><b>Atomic hold / confirm:</b> island reserves every service of a package in one transaction (guarded updates)</li>
+        <li><b>Saga:</b> hold → pay → confirm, with release / expiry as compensation</li>
+        <li><b>Idempotent requests:</b> retries never create duplicates</li>
+        <li><b>Single-writer ownership</b> of each data item</li>
+        <li><b>Outbox synchronisation</b> island → central; directory pull central → island</li>
+        <li><b>Offline operation</b> of island nodes (partition tolerance)</li>
+        <li><b>Parallel report generation</b> with worker threads</li>
+      </ul>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="box o"><h4>OUTPUT</h4>
+      <ul>
+        <li>Confirmed bookings with confirmation information (reference, package, dates, amount)</li>
+        <li>Inventory that is never oversold</li>
+        <li>Guests checked in exactly once</li>
+        <li>Up-to-date catalog and availability</li>
+        <li>Province-wide booking, occupancy and sales reports</li>
+        <li>Measured results: speedup, throughput, latency, oversell count (0)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="feedback"><b>Feedback / evaluation:</b> load tests, race tests, partition (offline) tests, speedup and efficiency measurements, and user feedback from receptionists and admins are used to refine the design.</div>
+
+  <h2 style="margin-top:7mm">4.1 Key concepts applied</h2>
+  <table>
+    <thead><tr><th style="width:32%">Concept</th><th>How it appears in the system</th></tr></thead>
+    <tbody>
+      <tr><td>Distribution / data partitioning</td><td>Data partitioned by island; each node stores and owns its own island's data.</td></tr>
+      <tr><td>Remote procedure call</td><td>gRPC contract (<code>proto/booking.proto</code>) between central and island nodes.</td></tr>
+      <tr><td>Parallelism (task)</td><td>Concurrent RPCs to all islands during search; total time ≈ slowest island instead of the sum.</td></tr>
+      <tr><td>Parallelism (data)</td><td>Report data split across worker threads (1 / 2 / 4 / 8) and merged.</td></tr>
+      <tr><td>Concurrency control</td><td>Atomic conditional updates and transactions; single writer per data item.</td></tr>
+      <tr><td>Fault tolerance / partition</td><td>Deadlines, offline mode, outbox with retries, de-duplication by event id.</td></tr>
+      <tr><td>Consistency trade-off (CAP)</td><td>Consistency chosen over availability for online sales of an unreachable island.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ ARCHITECTURE ============================ -->
+<section class="section">
+  <h1>5. System architecture</h1>
+  <p>Four laptops and the customers' phones share one phone hotspot. Laptop 1 is the central node; Laptops 2–4 each run one island node. The same island software runs on every island laptop with a different island id.</p>
+  <div class="diagram" id="d-arch"></div>
+  <div class="caption">Figure 1. Distributed architecture and communication paths</div>
+  <table>
+    <thead><tr><th style="width:22%">Component</th><th style="width:22%">Runs on</th><th>Responsibilities</th></tr></thead>
+    <tbody>
+      <tr><td>Mobile app</td><td>Customer phones (Expo Go)</td><td>Search packages, book, simulated payment, confirmation info, my bookings, cancel</td></tr>
+      <tr><td>Central node</td><td>Laptop 1</td><td>HTTP API for the app, parallel fan-out, booking saga, central admin panel, island registration, admin accounts, copies of all bookings for reports</td></tr>
+      <tr><td>Supabase (PostgreSQL)</td><td>Cloud, used by central only</td><td>Central storage: islands, accounts, catalog copy, booking copy, sync events</td></tr>
+      <tr><td>Island node</td><td>Laptops 2–4</td><td>Services, packages, inventory, bookings (single owner), receptionist accounts, outbox, node console</td></tr>
+      <tr><td>Node console</td><td>Browser on each island laptop</td><td>Login; receptionist pages; node admin pages</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ ROLES ============================ -->
+<section class="section">
+  <h1>6. Users, roles and data ownership</h1>
+  <h2>6.1 Roles</h2>
+  <table>
+    <thead><tr><th style="width:18%">Role</th><th style="width:22%">Works on</th><th>Permissions</th></tr></thead>
+    <tbody>
+      <tr><td><b>Central admin</b></td><td>Central admin panel</td><td>Register and edit islands/resorts; create and disable node admin accounts; view all bookings; generate reports</td></tr>
+      <tr><td><b>Node admin</b></td><td>Own island's node console</td><td>Manage own island's services, capacities, packages and prices; create and disable receptionist accounts; all receptionist functions</td></tr>
+      <tr><td><b>Receptionist</b></td><td>Own island's node console</td><td>Walk-in bookings; arrival confirmation; mark services unavailable for given dates; view the island's bookings</td></tr>
+      <tr><td><b>Customer</b></td><td>Mobile app</td><td>Browse and book packages; simulated payment; view confirmation; look up and cancel own booking (reference + e-mail)</td></tr>
+    </tbody>
+  </table>
+  <h2>6.2 Data ownership (single writer)</h2>
+  <p>Every data item has exactly one owner, the only node allowed to change it. Other nodes keep read-only copies. This removes conflicting edits by design.</p>
+  <table>
+    <thead><tr><th style="width:30%">Data</th><th style="width:18%">Owner</th><th style="width:17%">Copy kept by</th><th>Copy updated by</th></tr></thead>
+    <tbody>
+      <tr><td>Island registration</td><td>Central</td><td>Island</td><td>Island pulls (<code>PullDirectory</code>)</td></tr>
+      <tr><td>Central and node admin accounts</td><td>Central</td><td>Island</td><td>Island pulls (<code>PullDirectory</code>)</td></tr>
+      <tr><td>Receptionist accounts</td><td>Island</td><td>Central</td><td>Island outbox → <code>PushEvents</code></td></tr>
+      <tr><td>Services, packages, prices</td><td>Island</td><td>Central</td><td>Island outbox → <code>PushEvents</code></td></tr>
+      <tr><td>Inventory and blocked units</td><td>Island</td><td>—</td><td>Never copied; always queried live</td></tr>
+      <tr><td>Bookings (online and walk-in)</td><td>Island</td><td>Central</td><td>Island outbox → <code>PushEvents</code></td></tr>
+    </tbody>
+  </table>
+  <h2>6.3 Sample catalog (fictional businesses, real places)</h2>
+  <table>
+    <thead><tr><th style="width:20%">Island</th><th style="width:30%">Services</th><th>Example packages</th></tr></thead>
+    <tbody>
+      <tr><td>Biliran mainland</td><td>Lagundi Bay Resort rooms; Tinago &amp; Ulan-Ulan Falls trek; van transfer</td><td>Falls Day Trek; 2D1N Lagundi Bay + Falls</td></tr>
+      <tr><td>Maripipi</td><td>Dagami Reef cottages; Sambawan island hopping; boat transfer</td><td>Sambawan Day Tour; Sambawan Overnight (cottage + hopping + boat)</td></tr>
+      <tr><td>Higatangan</td><td>Sandbar Inn rooms; rock formations &amp; sandbar tour; pump boat from Naval</td><td>Sandbar Day Trip; 2D1N Higatangan Escape</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ USE CASES ============================ -->
+<section class="section">
+  <h1>7. Use case diagram</h1>
+  <div class="diagram tall" id="d-usecase"></div>
+  <div class="caption">Figure 2. Actors and use cases (node admin inherits all receptionist use cases)</div>
+</section>
+
+<!-- ============================ FLOWCHARTS ============================ -->
+<section class="section">
+  <h1>8. Flowcharts</h1>
+  <h2>8.1 Online booking (customer → central → island)</h2>
+  <h3>Part 1 — Parallel search</h3>
+  <div class="diagram" id="d-online-a"></div>
+  <div class="caption">Figure 3a. Central asks every island at the same time; an island that misses the deadline is shown as unavailable</div>
+</section>
+
+<section class="section">
+  <h3 style="margin-top:0">Part 2 — Hold, pay, confirm (saga)</h3>
+  <div class="diagram xtall" id="d-online"></div>
+  <div class="caption">Figure 3b. The owning island reserves all services atomically; release or expiry undoes the hold</div>
+</section>
+
+<section class="section">
+  <h2>8.2 Walk-in booking (receptionist)</h2>
+  <div class="note">Online and walk-in bookings both go through the island node that owns the inventory, so the race for the last unit is decided by one atomic update on one database.</div>
+  <div class="diagram tall" id="d-walkin"></div>
+  <div class="caption">Figure 4. Walk-in booking from the same inventory as online booking</div>
+</section>
+
+<section class="section">
+  <h2>8.3 Arrival confirmation (no tickets)</h2>
+  <div class="diagram xtall" id="d-arrival"></div>
+  <div class="caption">Figure 5. The guest shows the confirmation information received after payment; staff verify the ID</div>
+</section>
+
+<section class="section">
+  <h2>8.4 Mark service unavailable (receptionist)</h2>
+  <div class="diagram mid" id="d-block"></div>
+  <div class="caption">Figure 6. Manual input of unavailable services (repairs, weather, boat not running)</div>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">8.5 Catalog change by node admin</h2>
+  <div class="diagram" id="d-catalog"></div>
+  <div class="caption">Figure 7. Changes are saved locally first (works offline), then synchronised to central</div>
+</section>
+
+<section class="section">
+  <h2>8.6 Island registration and accounts</h2>
+  <div class="diagram" id="d-accounts" ></div>
+  <div class="caption">Figure 8. Central admin registers islands and node admins; node admins create receptionists (dark = central, teal = island)</div>
+  <h3>Login</h3>
+  <p>Passwords are stored only as salted scrypt hashes. Each node verifies logins against its local copy of the accounts, so staff can log in while the island is offline. Sessions expire after inactivity; disabled accounts stop working at the next directory pull.</p>
+</section>
+
+<!-- ============================ SEQUENCES ============================ -->
+<section class="section">
+  <h1>9. Sequence diagrams</h1>
+  <h2>9.1 Online booking across nodes</h2>
+  <div class="diagram tall" id="d-seq-online"></div>
+  <div class="caption">Figure 9. Parallel fan-out (par block), then hold, payment and confirmation on the owning island</div>
+</section>
+
+<section class="section">
+  <h2>9.2 Island offline and recovery</h2>
+  <div class="diagram mid" id="d-seq-offline"></div>
+  <div class="caption">Figure 10. Partition: the island keeps working; queued events synchronise on reconnection</div>
+</section>
+
+<!-- ============================ STATES ============================ -->
+<section class="section">
+  <h1>10. Booking life cycle</h1>
+  <div class="diagram" id="d-state" style="max-height:95mm"></div>
+  <div class="caption">Figure 11. Booking states. Each transition is a single conditional update, so it can happen only once.</div>
+  <table>
+    <thead><tr><th style="width:20%">State</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>HELD</td><td>Online booking: inventory reserved, waiting for payment (expires after 10 minutes)</td></tr>
+      <tr><td>CONFIRMED</td><td>Paid (online) or paid at the desk (walk-in); guest expected</td></tr>
+      <tr><td>CHECKED_IN</td><td>Guest arrived and identity verified by staff</td></tr>
+      <tr><td>RELEASED / EXPIRED</td><td>Hold undone because payment failed, was cancelled, or took too long; units returned</td></tr>
+      <tr><td>CANCELLED</td><td>Cancelled by the customer or staff; units returned; refund per policy</td></tr>
+      <tr><td>NO_SHOW</td><td>Date passed without check-in (set by a nightly batch job)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ ERD ============================ -->
+<section class="section">
+  <h1>11. Data model</h1>
+  <h2>11.1 Island node database (SQLite, one per island)</h2>
+  <div class="diagram tall" id="d-erd-island"></div>
+  <div class="caption">Figure 12. Island entities. <code>booking_line</code> records exactly which units a booking took, so cancellation and release return the same units.</div>
+  <div class="note"><b>Inventory rule.</b> For every service and day: <b>booked + blocked ≤ capacity</b>. Booking a package increases <code>booked</code> on every service and day it uses, inside one transaction, each step guarded by <code>WHERE booked + blocked + qty &lt;= capacity</code>. If any step fails, the whole transaction is rolled back. Marking units unavailable increases <code>blocked</code> under the same guard.</div>
+</section>
+
+<section class="section">
+  <h2>11.2 Central database (Supabase PostgreSQL)</h2>
+  <div class="diagram" id="d-erd-central"></div>
+  <div class="caption">Figure 13. Central entities. Catalog and booking tables are read-only copies fed by island events.</div>
+</section>
+
+<!-- ============================ CONCURRENCY ============================ -->
+<section class="section">
+  <h1>12. Concurrency, consistency and offline operation</h1>
+  <h2>12.1 Race conditions and their solutions</h2>
+  <table>
+    <thead><tr><th style="width:32%">Race</th><th style="width:12%">Where</th><th>Solution</th></tr></thead>
+    <tbody>
+      <tr><td>Online buyer vs walk-in guest for the last room</td><td>Island</td><td>Both requests go to the owning island; one guarded atomic update decides; the loser is told "sold out" before paying</td></tr>
+      <tr><td>Many online buyers for the last seats</td><td>Island</td><td>Same guarded update; transactions serialise writers (<code>BEGIN IMMEDIATE</code>)</td></tr>
+      <tr><td>Receptionist blocks a room while it is being booked</td><td>Island</td><td>Both use the same rule (booked + blocked ≤ capacity); the second to commit fails</td></tr>
+      <tr><td>Hold expires while the customer is paying</td><td>Island</td><td>Confirm succeeds only on a non-expired HELD booking; otherwise the payment is reversed</td></tr>
+      <tr><td>App or central retries after a timeout</td><td>Central, island</td><td>Idempotency key (<code>request_id</code>, unique) returns the same booking</td></tr>
+      <tr><td>Two desks confirm the same arrival</td><td>Island</td><td><code>UPDATE … WHERE status = 'CONFIRMED'</code> succeeds once</td></tr>
+      <tr><td>Event delivered twice during sync</td><td>Central</td><td>Events de-duplicated by <code>event_id</code></td></tr>
+      <tr><td>Central admin and node admin edit the same data</td><td>—</td><td>Impossible: single owner per data item (§6.2)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">12.2 Behaviour while an island is offline</h2>
+  <table>
+    <thead><tr><th style="width:42%">Situation</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Island's packages in the mobile app</td><td>Shown as <b>unavailable</b>; central cannot hold or confirm, so it does not sell</td></tr>
+      <tr><td>Walk-ins, arrivals, marking unavailable</td><td>Continue normally on the island</td></tr>
+      <tr><td>Node admin changes, new receptionists</td><td>Saved locally and queued in the outbox</td></tr>
+      <tr><td>Staff login</td><td>Works (accounts stored on the node)</td></tr>
+      <tr><td>Online bookings already confirmed</td><td>Can be checked in (stored on the island)</td></tr>
+      <tr><td>On reconnection</td><td>Outbox drains to central; island pulls account and registration changes</td></tr>
+    </tbody>
+  </table>
+  <h2>12.3 Consistency trade-off</h2>
+  <p>Under a network partition the system cannot keep both online availability and consistency for an island's inventory (CAP theorem). Because there is no separate online allotment, only the island can decide whether a unit is free. The design therefore <b>chooses consistency</b>: it never sells online what the owning island cannot confirm, while the island itself stays fully available to walk-in guests.</p>
+  <p>The partition is demonstrated with a <b>“Disconnect from Central”</b> switch on each node console (and optionally a firewall rule blocking the central laptop).</p>
+</section>
+
+<!-- ============================ PARALLELISM ============================ -->
+<section class="section">
+  <h1>13. Parallelism and experiments</h1>
+  <h2>13.1 Where parallelism is used</h2>
+  <table>
+    <thead><tr><th style="width:26%">Technique</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Parallel RPC fan-out</td><td>Central sends search requests to all island nodes at once and waits for all, with a deadline per call so one slow island cannot block the result.</td></tr>
+      <tr><td>Concurrent request handling</td><td>Every node serves many clients at the same time; correctness under concurrency comes from atomic guarded updates.</td></tr>
+      <tr><td>Data-parallel reports</td><td>Booking records are split into chunks processed by worker threads (occupancy, sales per island and package), then merged.</td></tr>
+      <tr><td>Parallel load generation</td><td>Test clients send N simultaneous requests (online and walk-in mixed) to measure throughput and verify zero oversell.</td></tr>
+    </tbody>
+  </table>
+  <h2>13.2 Experiments</h2>
+  <table>
+    <thead><tr><th style="width:26%">Experiment</th><th style="width:30%">Compare</th><th>Metrics</th></tr></thead>
+    <tbody>
+      <tr><td>Search fan-out (3 islands)</td><td>Sequential vs parallel RPC</td><td>Latency, speedup (ideal ≈ 3×; prototype measured 2.93× with 150 ms simulated link)</td></tr>
+      <tr><td>Last-unit race</td><td>N = 10 / 30 / 100 clients, online + walk-in</td><td>Bookings vs units available (oversell must be 0), throughput</td></tr>
+      <tr><td>Double arrival confirmation</td><td>Two desks at the same instant</td><td>Exactly one success</td></tr>
+      <tr><td>Report generation</td><td>1 / 2 / 4 / 8 worker threads</td><td>Speedup S(p) = T(1) / T(p), efficiency E(p) = S(p) / p</td></tr>
+      <tr><td>Load test</td><td>10 / 50 / 100 concurrent clients</td><td>Throughput, p95 latency, error rate</td></tr>
+      <tr><td>Partition recovery</td><td>Island offline for 1 / 5 minutes</td><td>Events queued, time to fully synchronise after reconnection</td></tr>
+    </tbody>
+  </table>
+  <h2>13.3 Expected limit (Amdahl's law)</h2>
+  <p>Speedup with <i>p</i> workers is bounded by <b>S(p) = 1 / ((1 − f) + f / p)</b>, where <i>f</i> is the parallelisable fraction. Reading the data and merging results remain sequential, so report speedup is expected to flatten as threads increase. The measured curve will be compared with this bound.</p>
+</section>
+
+<!-- ============================ REQUIREMENTS ============================ -->
+<section class="section">
+  <h1>14. Requirements</h1>
+  <h2>14.1 Functional requirements</h2>
+  <table>
+    <thead><tr><th style="width:9%">ID</th><th style="width:16%">Actor</th><th>Requirement</th></tr></thead>
+    <tbody>
+      <tr><td>FR-01</td><td>Customer</td><td>Search packages by date and number of guests across all islands, with each island's online status shown.</td></tr>
+      <tr><td>FR-02</td><td>Customer</td><td>View package details: services included, nights, price, maximum guests, island.</td></tr>
+      <tr><td>FR-03</td><td>Customer</td><td>Book a package with guest name, e-mail, phone, ID type and last 4 digits; pay (simulated).</td></tr>
+      <tr><td>FR-04</td><td>Customer</td><td>Receive confirmation information (reference, package, dates, guests, amount) after payment.</td></tr>
+      <tr><td>FR-05</td><td>Customer</td><td>Look up and cancel a booking using reference and e-mail.</td></tr>
+      <tr><td>FR-06</td><td>Receptionist</td><td>Log in to the node console (also while offline).</td></tr>
+      <tr><td>FR-07</td><td>Receptionist</td><td>Create walk-in bookings from the shared inventory.</td></tr>
+      <tr><td>FR-08</td><td>Receptionist</td><td>Search bookings by reference or name and confirm arrival after the ID check.</td></tr>
+      <tr><td>FR-09</td><td>Receptionist</td><td>Mark service units unavailable for selected dates and see affected bookings.</td></tr>
+      <tr><td>FR-10</td><td>Node admin</td><td>Create, edit and disable services (with capacity) and packages (with price and items).</td></tr>
+      <tr><td>FR-11</td><td>Node admin</td><td>Create and disable receptionist accounts for the island.</td></tr>
+      <tr><td>FR-12</td><td>Central admin</td><td>Register and edit islands; create and disable node admin accounts.</td></tr>
+      <tr><td>FR-13</td><td>Central admin</td><td>View all bookings filtered by island, status and date.</td></tr>
+      <tr><td>FR-14</td><td>Central admin</td><td>Generate occupancy and sales reports per island and package.</td></tr>
+      <tr><td>FR-15</td><td>System</td><td>Expire unpaid holds after 10 minutes; mark no-shows after the booking date.</td></tr>
+      <tr><td>FR-16</td><td>System</td><td>Synchronise island changes to central and directory changes to islands automatically.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">14.2 Non-functional requirements</h2>
+  <table>
+    <thead><tr><th style="width:20%">Quality</th><th>Requirement</th></tr></thead>
+    <tbody>
+      <tr><td>Consistency</td><td>Zero oversold units and zero double check-ins under concurrent load.</td></tr>
+      <tr><td>Availability</td><td>Island operations continue during loss of connection to central.</td></tr>
+      <tr><td>Performance</td><td>Search across 3 islands in under 1 s on the hotspot; parallel faster than sequential.</td></tr>
+      <tr><td>Reliability</td><td>No synchronisation event lost; duplicates have no effect.</td></tr>
+      <tr><td>Security</td><td>Hashed passwords; role-based access; central database key kept only on the central laptop.</td></tr>
+      <tr><td>Privacy</td><td>Minimal personal data; only the last 4 digits of IDs stored (Data Privacy Act of 2012, RA 10173).</td></tr>
+      <tr><td>Usability</td><td>Mobile-first app; consoles usable on a laptop screen; consistent palette.</td></tr>
+      <tr><td>Maintainability</td><td>One code base per role; every code block commented; shared gRPC contract.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ TECH ============================ -->
+<section class="section">
+  <h1>15. Technology and environment</h1>
+  <h2>15.1 Software stack</h2>
+  <table>
+    <thead><tr><th style="width:26%">Layer</th><th style="width:34%">Technology</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>Mobile app</td><td>Expo SDK 58 (React Native, TypeScript)</td><td>One code base for Android and iPhone; runs in Expo Go without app-store builds</td></tr>
+      <tr><td>Central and island servers</td><td>Node.js 24+ with TypeScript, Express</td><td>Same language as the app; runs TypeScript directly</td></tr>
+      <tr><td>Node-to-node communication</td><td>gRPC (<code>@grpc/grpc-js</code>, Protocol Buffers)</td><td>Typed RPC contract, deadlines, efficient binary protocol</td></tr>
+      <tr><td>Island storage</td><td>SQLite (built-in <code>node:sqlite</code>)</td><td>Embedded, works offline, transactional</td></tr>
+      <tr><td>Central storage</td><td>Supabase (PostgreSQL)</td><td>Hosted database with dashboard; row-level security</td></tr>
+      <tr><td>Consoles / admin panel</td><td>HTML, CSS, JavaScript served by each node</td><td>No installation on staff laptops</td></tr>
+      <tr><td>Parallel reports</td><td><code>node:worker_threads</code></td><td>True parallel CPU work in Node.js</td></tr>
+      <tr><td>Passwords</td><td><code>node:crypto</code> scrypt</td><td>Memory-hard password hashing, no extra dependency</td></tr>
+      <tr><td>Version control</td><td>Git + GitHub</td><td>Team collaboration, history</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">15.2 Hardware and network</h2>
+  <table>
+    <thead><tr><th style="width:26%">Item</th><th>Specification</th></tr></thead>
+    <tbody>
+      <tr><td>Laptops (4)</td><td>Windows, Node.js 24+, modern browser; one central, three island nodes</td></tr>
+      <tr><td>Phones (4)</td><td>Android or iPhone with Expo Go supporting SDK 58</td></tr>
+      <tr><td>Network</td><td>One phone hotspot (all 8 devices); mobile data needed only for Supabase</td></tr>
+      <tr><td>Ports</td><td>Central HTTP 4000 / gRPC 50050; islands HTTP 8081–8083 / gRPC 50051–50053</td></tr>
+    </tbody>
+  </table>
+  <h2>15.3 Repository layout</h2>
+  <table>
+    <thead><tr><th style="width:26%">Folder</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>app/</code></td><td>Expo mobile app</td></tr>
+      <tr><td><code>central/</code></td><td>Central server, admin panel, Supabase migrations</td></tr>
+      <tr><td><code>island/</code></td><td>Island node server, SQLite, node console</td></tr>
+      <tr><td><code>proto/</code></td><td>gRPC contract</td></tr>
+      <tr><td><code>shared/</code></td><td>Configuration and RPC helpers used by all servers</td></tr>
+      <tr><td><code>loadtest/</code></td><td>Race, search and load experiments</td></tr>
+      <tr><td><code>config/</code></td><td>Network addresses and seed data</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ OTHER CONSIDERATIONS ============================ -->
+<section class="section">
+  <h1>16. Other initial considerations</h1>
+  <h2>16.1 Network and demo setup</h2>
+  <ul>
+    <li>Phone hotspots often allow only 5–10 devices; test with all 8 connected early.</li>
+    <li>Some hotspots and school Wi-Fi block device-to-device traffic (client isolation); verify a phone can open the central laptop's address.</li>
+    <li>Allow Node.js through Windows Firewall on private networks on every laptop.</li>
+    <li>Record each laptop's IP address in <code>config/network.hotspot.json</code>; IPs can change when reconnecting.</li>
+    <li>Install all dependencies before demo day; only Supabase needs mobile data during the demo.</li>
+  </ul>
+  <h2>16.2 Security and privacy</h2>
+  <ul>
+    <li>The Supabase secret key stays in <code>.env</code> on the central laptop only; it is never committed or put in the app.</li>
+    <li>Passwords hashed with scrypt; accounts can be disabled; staff see only their own island.</li>
+    <li>Collect only what is needed: name, e-mail, phone, ID type and last 4 digits (RA 10173 — data minimisation).</li>
+    <li>Traffic on the hotspot is unencrypted in the prototype; TLS between nodes is listed as future work.</li>
+  </ul>
+  <h2>16.3 Business rules to agree on</h2>
+  <ul>
+    <li>Hold time before payment (proposed 10 minutes).</li>
+    <li>Cancellation and refund policy (e.g. full refund up to 48 hours before; none after).</li>
+    <li>Package pricing: per package up to a maximum number of guests (proposed) or per person.</li>
+    <li>Check-in window and when a booking becomes a no-show.</li>
+    <li>What happens to bookings affected when a service is marked unavailable (move date, change package, refund).</li>
+  </ul>
+</section>
+
+<section class="section">
+  <h2 style="margin-top:0">16.4 Testing plan</h2>
+  <ul>
+    <li><b>Unit level:</b> booking transaction, blocking rule, state transitions, password hashing.</li>
+    <li><b>Integration:</b> app → central → island booking, cancellation, sync, directory pull.</li>
+    <li><b>Concurrency:</b> race tests for last unit and double check-in; mixed online and walk-in.</li>
+    <li><b>Partition:</b> disconnect an island, operate, reconnect, verify synchronised state.</li>
+    <li><b>Performance:</b> sequential vs parallel search, worker-thread report speedup, load test.</li>
+    <li><b>User acceptance:</b> receptionist and admin walk-through with the consoles.</li>
+  </ul>
+  <h2>16.5 Demo script (outline)</h2>
+  <ol>
+    <li>Central admin registers an island and its node admin; node admin creates a receptionist.</li>
+    <li>Node admin publishes a package; it appears in the app.</li>
+    <li>Customer books and pays online; receptionist confirms the arrival.</li>
+    <li>Online and walk-in race for the last room: exactly one wins.</li>
+    <li>Island disconnected: packages unavailable online, walk-ins continue; reconnect and show sync.</li>
+    <li>Show benchmark charts: search speedup and report speedup.</li>
+  </ol>
+</section>
+
+<!-- ============================ RISKS ============================ -->
+<section class="section">
+  <h1>17. Risks and mitigation</h1>
+  <table>
+    <thead><tr><th style="width:30%">Risk</th><th style="width:12%">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>Hotspot blocks device-to-device traffic or device limit reached</td><td>High</td><td>Test in week 1; spare pocket router; fewer phones if needed</td></tr>
+      <tr><td>No internet at the demo venue (Supabase unreachable)</td><td>High</td><td>Islands still work; prepare mobile data; local fallback for central storage</td></tr>
+      <tr><td>Expo Go version mismatch on a phone (especially iPhone)</td><td>Medium</td><td>Pin SDK 58; check every phone in week 1</td></tr>
+      <tr><td>Laptop IP changes on reconnect</td><td>Medium</td><td>Re-check <code>ipconfig</code> before demo; update network config</td></tr>
+      <tr><td>Scope too large for the deadline</td><td>High</td><td>Prioritise: booking, arrival, offline demo, experiments; cut reviews/maps/extras</td></tr>
+      <tr><td>Integration problems between team members' parts</td><td>Medium</td><td>Agree on the gRPC contract first; integrate weekly on <code>main</code></td></tr>
+      <tr><td>Hold expiry or clock differences between laptops</td><td>Low</td><td>Expiry decided only by the island's own clock</td></tr>
+      <tr><td>Secret key leaked</td><td>Medium</td><td>Key only in central <code>.env</code>; rotate in dashboard; legacy keys disabled</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ PLAN ============================ -->
+<section class="section">
+  <h1>18. Project plan and team</h1>
+  <div class="diagram" id="d-gantt"></div>
+  <div class="caption">Figure 14. Schedule from 29 October to the 20 November deadline</div>
+  <table>
+    <thead><tr><th style="width:30%">Member</th><th>Responsibilities</th></tr></thead>
+    <tbody>
+      <tr><td>[Member 1] — Laptop 1</td><td>Central server, booking saga, central admin panel, Supabase, gRPC contract, integration</td></tr>
+      <tr><td>[Member 2]</td><td>Island node: services, packages, inventory, hold/confirm, accounts and login, outbox and directory sync</td></tr>
+      <tr><td>[Member 3]</td><td>Mobile app: all customer screens</td></tr>
+      <tr><td>[Member 4]</td><td>Node console UI (receptionist and node admin), parallel reports, load tests, benchmark charts</td></tr>
+    </tbody>
+  </table>
+  <h2>Current status (29 October 2026)</h2>
+  <ul>
+    <li>Working prototype of v1: island nodes, central server, gRPC, Supabase, parallel search (2.93× speedup), race and partition tests passing.</li>
+    <li>Design revised to v2 after adviser feedback (this document); code rework starts with the island data model and packages.</li>
+  </ul>
+</section>
+
+<!-- ============================ OPEN QUESTIONS ============================ -->
+<section class="section">
+  <h1>19. Open questions for the adviser</h1>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:44%">Question</th><th>Proposed answer</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Is a simulated payment acceptable, or is a sandbox gateway (e.g. GCash/PayMongo test mode) expected?</td><td>Simulated payment with success/failure option</td></tr>
+      <tr><td>2</td><td>Package price per package (up to N guests) or per person?</td><td>Per package, with a maximum number of guests</td></tr>
+      <tr><td>3</td><td>Cancellation and refund rules?</td><td>Full refund up to 48 h before the date</td></tr>
+      <tr><td>4</td><td>How long should an unpaid online hold last?</td><td>10 minutes</td></tr>
+      <tr><td>5</td><td>Should the central admin approve node admins' package and price changes before they go live?</td><td>No — node admins publish directly; central sees all changes</td></tr>
+      <tr><td>6</td><td>Which reports are required (occupancy, sales, cancellations, no-shows)?</td><td>Occupancy and sales per island and package</td></tr>
+      <tr><td>7</td><td>Is "unavailable online while the island is offline" acceptable as the partition behaviour?</td><td>Yes — consistency over availability (§12.3)</td></tr>
+      <tr><td>8</td><td>Do customers need accounts?</td><td>No — reference + e-mail look-up</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+// Diagram sources, kept in JS strings so HTML parsing never touches the Mermaid syntax.
+const D = {};
+
+D['d-arch'] = `flowchart TB
+  APP["Customer phones<br/>Expo mobile app"]
+  subgraph L1["Laptop 1 - Central node"]
+    direction LR
+    API["HTTP API<br/>search, book, cancel"]
+    SAGA["Booking saga +<br/>parallel fan-out"]
+    ADM["Central admin panel<br/>islands, accounts, reports"]
+  end
+  SB[("Supabase<br/>PostgreSQL")]
+  B["Laptop 2 - Biliran node<br/>server + SQLite + console"]
+  M["Laptop 3 - Maripipi node<br/>server + SQLite + console"]
+  H["Laptop 4 - Higatangan node<br/>server + SQLite + console"]
+  APP -- "HTTP / JSON" --> API
+  API --- SAGA
+  ADM --- SAGA
+  SAGA -- "SQL" --> SB
+  SAGA <-- "gRPC" --> B
+  SAGA <-- "gRPC" --> M
+  SAGA <-- "gRPC" --> H
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  classDef app fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class API,ADM,SAGA central
+  class B,M,H island
+  class APP app`;
+
+D['d-usecase'] = `%%{init: {"flowchart": {"nodeSpacing": 6, "rankSpacing": 70}}}%%
+flowchart LR
+  CU(["Customer"]):::actor
+  RC(["Receptionist"]):::actor
+  NA(["Node admin"]):::actor
+  CA(["Central admin"]):::actor
+  subgraph SYS["Biliran Resort and Tour Booking System"]
+    U1(["Search packages"])
+    U2(["Book and pay online"])
+    U3(["View confirmation info"])
+    U4(["Look up / cancel booking"])
+    U5(["Log in to node console"])
+    U6(["Walk-in booking"])
+    U7(["Confirm arrival + ID check"])
+    U8(["Mark service unavailable"])
+    U9(["Manage services and packages"])
+    U10(["Set prices"])
+    U11(["Manage receptionist accounts"])
+    U12(["Register islands"])
+    U13(["Manage node admin accounts"])
+    U14(["View all bookings"])
+    U15(["Generate reports"])
+  end
+  CU --- U1 & U2 & U3 & U4
+  RC --- U5 & U6 & U7 & U8
+  NA --- U9 & U10 & U11
+  NA -. "inherits" .-> RC
+  CA --- U12 & U13 & U14 & U15
+  classDef actor fill:#307082,stroke:#12212E,color:#ffffff
+  classDef default fill:#ffffff,stroke:#6CA3A2,color:#12212E`;
+
+D['d-online-a'] = `flowchart TD
+  A(["Customer opens the app"]) --> B["Enter date and number of guests"]
+  B --> C["Central queries all island nodes<br/>in parallel, with a deadline"]
+  C --> D{"Island answered<br/>before deadline?"}
+  D -- "No" --> E["Mark that island's packages<br/>unavailable online"]
+  D -- "Yes" --> F["Island returns its<br/>available packages"]
+  E --> G["Show merged results"]
+  F --> G
+  G --> H(["Customer selects a package<br/>continue in part 2"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-online'] = `%%{init: {"flowchart": {"nodeSpacing": 25, "rankSpacing": 30}}}%%
+flowchart TD
+  H(["Package selected,<br/>guest details entered"]) --> I["Central sends HoldBooking to the owning island"]
+  I --> J{"All services free?<br/>atomic check on island"}
+  J -- "No" --> K(["Show sold out;<br/>back to results"])
+  J -- "Yes" --> L["Booking HELD, 10-minute timer"]
+  L --> M["Customer pays - simulated"]
+  M --> N{"Payment<br/>successful?"}
+  N -- "No" --> O(["ReleaseHold - units returned;<br/>back to results"])
+  N -- "Yes" --> P{"Hold still<br/>valid?"}
+  P -- "No" --> Q(["Reverse payment, show expired;<br/>back to results"])
+  P -- "Yes" --> R["ConfirmBooking - CONFIRMED"]
+  R --> S["Island outbox sends booking copy to central"]
+  R --> T(["App shows confirmation info<br/>reference, package, dates, amount"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  classDef good fill:#E3EEF0,stroke:#307082,color:#12212E
+  class J,N,P dec
+  class R,T good`;
+
+D['d-walkin'] = `flowchart TD
+  A(["Guest at the front desk"]) --> B["Receptionist logs in to node console"]
+  B --> C["Select package, date and guests"]
+  C --> D{"Available?"}
+  D -- "No" --> E["Offer another date or package"]
+  E --> C
+  D -- "Yes" --> F["Enter guest name and ID details"]
+  F --> G["Collect payment at the desk"]
+  G --> H["Atomic booking on island - CONFIRMED"]
+  H --> I(["Give guest the booking information"])
+  H --> J{"Connected to<br/>central?"}
+  J -- "Yes" --> K["Outbox sends copy to central"]
+  J -- "No" --> L["Event waits in the outbox"]
+  L --> M["Sent automatically on reconnection"]
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D,J dec`;
+
+D['d-arrival'] = `%%{init: {"flowchart": {"nodeSpacing": 20, "rankSpacing": 28}}}%%
+flowchart TD
+  A(["Guest arrives and shows the confirmation info"]) --> B["Receptionist searches by reference or name"]
+  B --> C{"Booking found<br/>on this island?"}
+  C -- "No" --> D["Check island and date;<br/>contact central admin if needed"]
+  C -- "Yes" --> E{"Booking<br/>status"}
+  E -- "CHECKED_IN" --> F["Already checked in - stop"]
+  E -- "CANCELLED / NO_SHOW" --> G["Not valid - apply policy"]
+  E -- "CONFIRMED" --> H["Compare physical ID with name,<br/>ID type and last 4 digits"]
+  H --> I{"ID matches?"}
+  I -- "No" --> J["Refuse; escalate to node admin"]
+  I -- "Yes" --> K["Confirm arrival:<br/>CONFIRMED to CHECKED_IN, once only"]
+  K --> L{"Update<br/>succeeded?"}
+  L -- "No, another desk was first" --> F
+  L -- "Yes" --> M(["Guest checked in; event queued for central"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class C,E,I,L dec`;
+
+D['d-block'] = `flowchart TD
+  A(["Problem with a service:<br/>repair, weather, boat not running"]) --> B["Receptionist selects service and dates"]
+  B --> C["Enter number of units to block, or block all"]
+  C --> D{"booked + blocked + n<br/>within capacity?"}
+  D -- "Yes" --> E["Units blocked on the island"]
+  E --> F(["Search and walk-in see the change immediately"])
+  D -- "No" --> G["Show bookings affected"]
+  G --> H["Contact guests: move date, change package or refund"]
+  H --> C
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-catalog'] = `flowchart TD
+  A(["Node admin edits service,<br/>package or price"]) --> B["Validate"]
+  B --> C["Save in island DB + outbox event<br/>in one transaction"]
+  C --> D{"Connected?"}
+  D -- "Yes" --> E["Central updates its catalog copy"]
+  D -- "No" --> F["Queued until reconnection"]
+  F --> E
+  E --> G(["Visible in app search"])
+  classDef dec fill:#FBEBD9,stroke:#EA9940,color:#12212E
+  class D dec`;
+
+D['d-accounts'] = `%%{init: {"flowchart": {"rankSpacing": 26}}}%%
+flowchart TD
+  A(["Central: central admin logs in"]) --> B["Central: register island<br/>id, name, address, node address"]
+  B --> C["Central: create node admin account<br/>password hashed"]
+  C --> D["Island: node starts or reconnects"]
+  D --> E["Island: PullDirectory<br/>registration + admin accounts"]
+  E --> F["Island: node admin logs in<br/>checked locally"]
+  F --> G["Island: node admin creates<br/>receptionist accounts"]
+  G --> H["Island: outbox copies receptionist<br/>accounts to central"]
+  H --> I(["Central: admin sees all staff per island"])
+  classDef central fill:#DDE6EC,stroke:#12212E,color:#12212E
+  classDef island fill:#E3EEF0,stroke:#307082,color:#12212E
+  class A,B,C,I central
+  class D,E,F,G,H island`;
+
+D['d-seq-online'] = `%%{init: {"sequence": {"actorMargin": 12, "width": 110, "boxMargin": 6, "messageMargin": 28, "noteMargin": 6}}}%%
+sequenceDiagram
+  autonumber
+  actor C as App
+  participant CE as Central
+  participant B as Biliran
+  participant M as Maripipi
+  participant H as Higatangan
+  participant DB as Supabase
+  C->>CE: Search(date, guests)
+  par Parallel fan-out
+    CE->>B: SearchAvailability
+  and
+    CE->>M: SearchAvailability
+  and
+    CE->>H: SearchAvailability
+  end
+  B-->>CE: packages
+  M-->>CE: packages
+  H-->>CE: packages
+  CE-->>C: merged results
+  C->>CE: Book(package, guest, key)
+  CE->>M: HoldBooking
+  M-->>CE: HELD, expires in 10 min
+  C->>CE: Pay (simulated)
+  CE->>M: ConfirmBooking
+  M-->>CE: CONFIRMED
+  CE-->>C: confirmation info (reference)
+  M-)CE: PushEvents (outbox)
+  CE->>DB: store booking copy`;
+
+D['d-seq-offline'] = `sequenceDiagram
+  autonumber
+  participant CE as Central
+  participant I as Island node
+  actor R as Receptionist
+  Note over CE,I: Link to island lost (partition)
+  CE-xI: SearchAvailability (deadline exceeded)
+  CE->>CE: Show island packages as unavailable online
+  R->>I: Log in (checked locally)
+  R->>I: Walk-in booking / confirm arrival
+  I->>I: Commit change + outbox event
+  Note over CE,I: Link restored
+  I->>CE: PushEvents (queued events)
+  CE-->>I: Ack (duplicates ignored by event_id)
+  I->>CE: PullDirectory(since)
+  CE-->>I: Account and registration changes
+  CE->>I: SearchAvailability
+  I-->>CE: packages (available online again)`;
+
+D['d-state'] = `stateDiagram-v2
+  direction LR
+  [*] --> HELD: online hold
+  [*] --> CONFIRMED: walk-in, paid at desk
+  HELD --> CONFIRMED: payment OK
+  HELD --> RELEASED: payment failed or cancelled
+  HELD --> EXPIRED: 10 minutes passed
+  CONFIRMED --> CHECKED_IN: arrival confirmed
+  CONFIRMED --> CANCELLED: cancelled
+  CONFIRMED --> NO_SHOW: date passed
+  CHECKED_IN --> [*]
+  CANCELLED --> [*]
+  NO_SHOW --> [*]
+  RELEASED --> [*]
+  EXPIRED --> [*]`;
+
+D['d-erd-island'] = `erDiagram
+  ISLAND_INFO ||--o{ SERVICE : offers
+  ISLAND_INFO ||--o{ PACKAGE : sells
+  SERVICE ||--o{ INVENTORY_DAY : "capacity per day"
+  PACKAGE ||--|{ PACKAGE_ITEM : contains
+  SERVICE ||--o{ PACKAGE_ITEM : "used by"
+  PACKAGE ||--o{ BOOKING : "booked as"
+  BOOKING ||--|{ BOOKING_LINE : reserves
+  SERVICE ||--o{ BOOKING_LINE : "units of"
+  ACCOUNT ||--o{ BOOKING : "creates walk-in"
+  ISLAND_INFO {
+    text id PK
+    text name
+    text address
+  }
+  SERVICE {
+    text id PK
+    text kind "room tour boat meal"
+    text name
+    int capacity
+    bool active
+  }
+  INVENTORY_DAY {
+    text service_id PK
+    date day PK
+    int capacity
+    int booked
+    int blocked
+  }
+  PACKAGE {
+    text id PK
+    text name
+    int price_php
+    int nights
+    int max_guests
+    bool active
+  }
+  PACKAGE_ITEM {
+    text package_id PK
+    text service_id PK
+    int qty
+    bool per_guest
+  }
+  BOOKING {
+    text id PK
+    text reference UK
+    text request_id UK
+    text source "ONLINE WALKIN"
+    text package_id FK
+    date day
+    int guests
+    text guest_name
+    text email
+    text phone
+    text id_type
+    text id_last4
+    int total_php
+    text status
+    datetime hold_expires_at
+    text created_by FK
+  }
+  BOOKING_LINE {
+    text booking_id PK
+    text service_id PK
+    date day PK
+    int qty
+  }
+  ACCOUNT {
+    text id PK
+    text username UK
+    text role "node_admin receptionist"
+    text password_hash
+    bool active
+    text owner "central island"
+  }
+  OUTBOX {
+    text event_id PK
+    text type
+    text payload
+    datetime created_at
+    datetime sent_at
+  }`;
+
+D['d-erd-central'] = `%%{init: {"er": {"layoutDirection": "LR"}}}%%
+erDiagram
+  ISLAND ||--o{ ACCOUNT : employs
+  ISLAND ||--o{ SERVICE_COPY : "catalog copy"
+  ISLAND ||--o{ PACKAGE_COPY : "catalog copy"
+  ISLAND ||--o{ BOOKING_COPY : "booking copy"
+  ISLAND ||--o{ ISLAND_EVENT : sends
+  ISLAND {
+    text id PK
+    text name
+    text address
+    text node_host
+    int grpc_port
+    bool active
+  }
+  ACCOUNT {
+    uuid id PK
+    text username UK
+    text role "central_admin node_admin receptionist"
+    text island_id FK
+    text password_hash
+    bool active
+    int version
+  }
+  SERVICE_COPY {
+    text id PK
+    text island_id FK
+    text kind
+    text name
+    int capacity
+  }
+  PACKAGE_COPY {
+    text id PK
+    text island_id FK
+    text name
+    int price_php
+    int max_guests
+  }
+  BOOKING_COPY {
+    text id PK
+    text reference UK
+    text island_id FK
+    text package_id
+    date day
+    int guests
+    text email
+    int total_php
+    text status
+  }
+  ISLAND_EVENT {
+    text event_id PK
+    text island_id FK
+    text type
+    jsonb payload
+    timestamptz received_at
+  }`;
+
+D['d-gantt'] = `gantt
+  dateFormat YYYY-MM-DD
+  axisFormat %b %d
+  section Design
+  Design v2 and document        :done, d1, 2026-10-29, 2d
+  Hotspot test with 8 devices   :h1, 2026-10-30, 3d
+  section Island node
+  Data model, packages, hold-confirm :a1, 2026-10-30, 5d
+  Accounts, login, sync         :a2, after a1, 6d
+  section Central
+  gRPC v2, fan-out, saga        :c1, 2026-10-30, 6d
+  Central admin panel           :c2, after c1, 6d
+  section Mobile app
+  Customer screens              :b1, 2026-11-01, 10d
+  section Consoles and tests
+  Node console UI               :t1, 2026-11-02, 8d
+  Parallel reports, load tests  :t2, 2026-11-09, 6d
+  section Finish
+  Integration and offline demo  :i1, 2026-11-12, 4d
+  Report and charts             :r1, 2026-11-15, 4d
+  Rehearsal                     :r2, 2026-11-19, 1d
+  Deadline                      :milestone, m1, 2026-11-20, 0d`;
+
+// Render every diagram, then flag the page as ready (used when printing).
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Segoe UI", Arial, sans-serif',
+  themeVariables: {
+    fontSize: '14px',
+    primaryColor: '#E3EEF0', primaryBorderColor: '#307082', primaryTextColor: '#12212E',
+    secondaryColor: '#FBEBD9', tertiaryColor: '#F6F4EF', lineColor: '#307082',
+    clusterBkg: '#F6F4EF', clusterBorder: '#6CA3A2', noteBkgColor: '#FBEBD9', noteBorderColor: '#EA9940',
+    actorBkg: '#E3EEF0', actorBorder: '#307082', signalColor: '#12212E', signalTextColor: '#12212E',
+    labelBoxBkgColor: '#E3EEF0', labelBoxBorderColor: '#307082',
+    taskBkgColor: '#6CA3A2', taskBorderColor: '#307082', doneTaskBkgColor: '#307082', critBkgColor: '#EA9940',
+    sectionBkgColor: '#F6F4EF', altSectionBkgColor: '#ffffff', gridColor: '#cfd8d6', todayLineColor: '#EA9940'
+  },
+  flowchart: { htmlLabels: true, curve: 'basis', useMaxWidth: true },
+  sequence: { useMaxWidth: true, mirrorActors: false },
+  er: { useMaxWidth: true },
+  gantt: { useMaxWidth: true, useWidth: 680, barHeight: 20, barGap: 5, fontSize: 12, sectionFontSize: 12, leftPadding: 150 }
+});
+(async () => {
+  for (const [id, src] of Object.entries(D)) {
+    const el = document.getElementById(id);
+    try {
+      const { svg } = await mermaid.render(id + '-svg', src);
+      el.innerHTML = svg;
+    } catch (e) {
+      el.innerHTML = '<pre style="color:#b4432f;text-align:left">Diagram error in ' + id + ': ' + e.message + '</pre>';
+      console.error(id, e);
+    }
+  }
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>
