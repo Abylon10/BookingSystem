@@ -1,0 +1,6 @@
+# Supabase project config for the central node.
+# Used by the Supabase GitHub integration (working directory: "central").
+# On push/merge to main, new files in ./migrations are applied to the project.
+# Migration file names must start with the version Supabase records, e.g.
+# 20261026051112_init.sql, so already-applied migrations are not run again.
+project_id = "BookingSystem"

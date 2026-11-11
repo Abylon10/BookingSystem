@@ -55,7 +55,11 @@ listings + 60 days of online pool are seeded.
    (dashboard → Project Settings → API Keys). Never put it in the app or commit it.
 2. `npm run central:seed` tops up the online pool for new days (safe to re-run).
 
-To rebuild from scratch on another project: apply `central/supabase/migrations/0001_init.sql`, then seed.
+To rebuild from scratch on another project: apply `central/supabase/migrations/20261026051112_init.sql`, then seed.
+
+The Supabase GitHub integration uses working directory `central` (it reads `central/supabase/`).
+New schema changes go in a new file `central/supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`;
+with "Deploy to production" on, pushing it to `main` applies it to the project.
 
 Without Supabase, central still serves search (live from the islands); online booking returns 503.
 
