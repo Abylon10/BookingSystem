@@ -5,6 +5,7 @@ Online bookings from an Expo app, walk-in bookings and ID check-in at each islan
 and each island keeps working when it loses its link to the mainland.
 
 See **[DESIGN.md](DESIGN.md)** for the architecture, race-condition handling, and team plan.
+Teammates: set up your laptop with **[docs/TEAM-SETUP.md](docs/TEAM-SETUP.md)**.
 
 ```
 app/        Expo app (customer + staff scanner)            → phones
