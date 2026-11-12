@@ -1,0 +1,51 @@
+Real-network tests — 4 laptops on iPhone hotspot, 2026-11-12 09:09
+central 172.20.10.4 | biliran 172.20.10.5 | maripipi 172.20.10.2 | higatangan 172.20.10.6
+LINK_LATENCY_MS=0 (no simulated delay; real Wi-Fi latency only)
+
+=== Search fan-out: sequential vs parallel (20 runs each) ===
+┌─────────┬──────────────┬──────┬───────┬───────┐
+│ (index) │ mode         │ runs │ avgMs │ p95Ms │
+├─────────┼──────────────┼──────┼───────┼───────┤
+│ 0       │ 'sequential' │ 20   │ 1629  │ 1739  │
+│ 1       │ 'parallel'   │ 20   │ 1510  │ 1517  │
+└─────────┴──────────────┴──────┴───────┴───────┘
+Speedup: 1.08x
+
+Note: in the first run above Maripipi's Wi-Fi link dropped intermittently (one island hit the 1.5 s deadline on most searches), so parallel time ~ deadline. Re-run after the link stabilised:
+
+=== Search fan-out, re-run 09:11 (20 runs each) ===
+┌─────────┬──────────────┬──────┬───────┬───────┐
+│ (index) │ mode         │ runs │ avgMs │ p95Ms │
+├─────────┼──────────────┼──────┼───────┼───────┤
+│ 0       │ 'sequential' │ 20   │ 212   │ 331   │
+│ 1       │ 'parallel'   │ 20   │ 112   │ 214   │
+└─────────┴──────────────┴──────┴───────┴───────┘
+Speedup: 1.89x
+
+=== Last-room race: 30 simultaneous walk-ins sent from central's laptop to the Higatangan laptop (Sandbar Inn, today) ===
+┌─────────────────┬────────┐
+│ (index)         │ Values │
+├─────────────────┼────────┤
+│ clients         │ 30     │
+│ availableBefore │ 6      │
+│ booked          │ 6      │
+│ soldOut         │ 24     │
+│ otherErrors     │ 0      │
+│ availableAfter  │ 0      │
+│ ms              │ 549    │
+└─────────────────┴────────┘
+✅ No oversell
+
+=== Last-room race: 50 simultaneous walk-ins to the Biliran laptop (Falls Trek, today) ===
+┌─────────────────┬────────┐
+│ (index)         │ Values │
+├─────────────────┼────────┤
+│ clients         │ 50     │
+│ availableBefore │ 14     │
+│ booked          │ 14     │
+│ soldOut         │ 36     │
+│ otherErrors     │ 0      │
+│ availableAfter  │ 0      │
+│ ms              │ 234    │
+└─────────────────┴────────┘
+✅ No oversell
