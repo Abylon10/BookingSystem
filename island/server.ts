@@ -152,7 +152,12 @@ for (const method of Object.keys(api)) {
 const grpcServer = new grpc.Server();
 grpcServer.addService(IslandService.service, grpcHandlers);
 grpcServer.bindAsync(`0.0.0.0:${me.grpcPort}`, grpc.ServerCredentials.createInsecure(), (err) => {
-  if (err) throw err;
+  if (err) {
+    // In cloud mode the island link is enough, so a busy port is only a warning;
+    // on a LAN central needs this port, so stop with a clear message.
+    if (process.env.CENTRAL_URL) return console.warn(`[${island.id}] gRPC not started (${err.message}); using the island link only`);
+    throw err;
+  }
   console.log(`[${island.id}] gRPC IslandService on :${me.grpcPort}`);
 });
 

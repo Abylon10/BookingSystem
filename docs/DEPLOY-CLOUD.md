@@ -74,6 +74,10 @@ NETWORK=cloud PORT=4100 node --env-file-if-exists=.env central/server.ts
 NETWORK=cloud CENTRAL_URL=http://localhost:4100 npm run island:biliran
 ```
 
+Deployed 12 Nov: https://biliran-central.onrender.com (Render, Singapore). An island on a home
+connection linked to it in ~2 s, showed online via the link (~240 ms round trip), walk-in synced,
+partition switch worked.
+
 Measured locally (12 Nov): all 3 islands linked; search, walk-in sync, partition switch and
 online/offline status work over the link; after a central restart all islands re-linked
 within 3 s; a forged hello was refused (code 4003); parallel search 2.98× faster than
