@@ -175,8 +175,20 @@ let reconnectDelay = 1000;
 let lastLinkError = '';
 function connectLink(): void {
   if (!CENTRAL_URL) return;
-  const ws = new WebSocket(`${CENTRAL_URL.replace(/^http/, 'ws')}/island-link`);
+  // handshakeTimeout: if the network silently stalls the connection (some
+  // ISPs, proxies or antivirus "web shields" do this with WebSockets), give up
+  // after 15 s with an error instead of waiting forever without a message.
+  const ws = new WebSocket(`${CENTRAL_URL.replace(/^http/, 'ws')}/island-link`, { handshakeTimeout: 15_000 });
   let welcomed = false;
+
+  // Connected but never welcomed (central did not answer the hello) -> retry.
+  const welcomeTimer = setTimeout(() => {
+    if (!welcomed) {
+      console.warn(`[${island.id}] central did not answer the hello within 30 s — retrying`);
+      ws.terminate();
+    }
+  }, 30_000);
+  ws.on('close', () => clearTimeout(welcomeTimer));
   const linkHandlers: Handlers = {};
   for (const method of Object.keys(api)) linkHandlers[method] = (req) => serve(method, req);
 
