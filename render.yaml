@@ -1,0 +1,23 @@
+# Render Blueprint: deploys the central node as a public web service.
+# Islands connect out to it over wss://<service>.onrender.com/island-link,
+# and the mobile app uses https://<service>.onrender.com as its API.
+# Secrets marked sync: false are typed into the Render dashboard, never committed.
+services:
+  - type: web
+    name: biliran-central
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --omit=dev
+    startCommand: node central/server.ts
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NETWORK
+        value: cloud
+      - key: SUPABASE_URL
+        value: https://xrpkpxxxancrogjddriw.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: TICKET_SECRET
+        sync: false

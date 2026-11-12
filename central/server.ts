@@ -1,20 +1,28 @@
 /**
  * central/server.ts
  *
- * The "mainland" server (runs on Laptop 1). One process serves:
+ * The "mainland" server (Laptop 1 on a LAN, or a cloud host). One process serves:
  *  - HTTP API for the Expo app : search, book, list, cancel
- *  - gRPC client to the islands: parallel search fan-out, register/cancel
- *                                online tickets on the owning island
- *  - gRPC CentralService       : receives the islands' outbox events
+ *  - calls to the islands       : parallel search fan-out, register/cancel
+ *                                 online tickets on the owning island
+ *  - island events (outbox sync): received from every island
+ *
+ * Two ways to reach an island, chosen per call:
+ *  - island link (WebSocket, /island-link): the island connected OUT to us.
+ *    Works across the internet, through home routers and mobile-data NAT.
+ *  - direct gRPC to the island's IP: only on a shared LAN / hotspot.
  *
  * Storage is Supabase (Postgres). Central owns the ONLINE pool; each island
  * owns its WALK-IN pool. Neither writes the other's data directly.
  */
 import express from 'express';
+import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { loadNetwork, ticketSecret, today } from '../shared/config.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
+import { Peer, LinkError, errorText, verifyHello } from '../shared/link.ts';
 import { newCode, signTicket } from '../shared/ticket.ts';
 
 // ===========================================================================
@@ -33,12 +41,27 @@ const sb: SupabaseClient | null = process.env.SUPABASE_URL && process.env.SUPABA
   : null;
 if (!sb) console.warn('[central] SUPABASE_URL / SUPABASE_SERVICE_KEY not set — online booking disabled');
 
-// One gRPC client per island, created once and reused for every call.
+// One entry per island. `client` is a direct gRPC client, only when the
+// island's address is known (LAN/hotspot config); in the cloud config the
+// host is null and the island is reached through its link instead.
 const islands = network.islands.map((i) => ({
   id: i.id,
-  client: new IslandService(`${i.host}:${i.grpcPort}`, grpc.credentials.createInsecure()),
+  client: i.host ? new IslandService(`${i.host}:${i.grpcPort}`, grpc.credentials.createInsecure()) : null,
 }));
 type Island = (typeof islands)[number];
+
+// Islands currently connected over an island link, by island id.
+const links = new Map<string, Peer>();
+
+// Calls a method on one island, preferring its link (works across the
+// internet) and falling back to direct gRPC (LAN). Throws when neither is
+// available, which callers treat as "island offline".
+function callIsland<Res>(island: Island, method: string, request: object, timeoutMs = 1500): Promise<Res> {
+  const link = links.get(island.id);
+  if (link?.open) return link.call<Res>(method, request, timeoutMs);
+  if (island.client) return call<object, Res>(island.client, method, request, timeoutMs);
+  return Promise.reject(new LinkError('UNAVAILABLE', `${island.id} is not connected`));
+}
 
 // Which island owns a listing. Listing ids start with the island id by
 // convention ("maripipi-sambawan-hopping" -> maripipi).
@@ -73,12 +96,15 @@ type ListingOut = Record<string, any> & { id: string };
 async function fetchIsland(island: Island) {
   const started = performance.now();
   try {
-    const reply = await call<object, { listings: ListingOut[] }>(island.client, 'GetCatalog', {});
-    return { id: island.id, status: 'online' as const, ms: Math.round(performance.now() - started), listings: reply.listings };
+    const reply = await callIsland<{ listings: ListingOut[] }>(island, 'GetCatalog', {});
+    return {
+      id: island.id, status: 'online' as const, via: links.get(island.id)?.open ? 'link' : 'grpc',
+      ms: Math.round(performance.now() - started), listings: reply.listings,
+    };
   } catch (err) {
     return {
       id: island.id, status: 'offline' as const, ms: Math.round(performance.now() - started),
-      error: (err as grpc.ServiceError).details, listings: [] as ListingOut[],
+      error: errorText(err), listings: [] as ListingOut[],
     };
   }
 }
@@ -149,8 +175,11 @@ const needSupabase = (res: express.Response) => {
   return true;
 };
 
-// Liveness check used by the app and tests.
-app.get('/health', (_req, res) => res.json({ ok: true, supabase: Boolean(sb) }));
+// Liveness check used by the app, tests, the cloud host, and the islands'
+// keep-awake ping. Also lists which islands are connected over a link.
+app.get('/health', (_req, res) => res.json({
+  ok: true, supabase: Boolean(sb), linkedIslands: [...links].filter(([, p]) => p.open).map(([id]) => id),
+}));
 
 // Search: GET /api/listings?day=YYYY-MM-DD[&mode=sequential]
 app.get('/api/listings', async (req, res) => {
@@ -196,11 +225,11 @@ app.post('/api/bookings', async (req, res) => {
   //    offline, scanning the signed QR at check-in registers it there anyway.
   const island = islandOf(booking.listing_id);
   if (island) {
-    call(island.client, 'RegisterOnlineBooking', {
+    callIsland(island, 'RegisterOnlineBooking', {
       booking_id: booking.id, listing_id: booking.listing_id, date: booking.day, nights: booking.nights,
       qty: booking.qty, guest_name: booking.guest_name, id_type: booking.id_type,
       id_last4: booking.id_last4, code: booking.code,
-    }).catch((err) => console.warn(`[central] could not register ${booking.code} on ${island.id}: ${err.details}`));
+    }).catch((err) => console.warn(`[central] could not register ${booking.code} on ${island.id}: ${errorText(err)}`));
   }
 
   res.status(201).json({ booking, ticket: { code: booking.code, qr } });
@@ -229,18 +258,13 @@ app.post('/api/bookings/:id/cancel', async (req, res) => {
   // 2. Tell the owning island (best effort).
   // TODO(sync): queue and retry if the island is offline, so it cannot check in a cancelled ticket.
   const island = islandOf(booking.listing_id);
-  if (island) call(island.client, 'CancelOnlineBooking', { booking_id: booking.id }).catch(() => {});
+  if (island) callIsland(island, 'CancelOnlineBooking', { booking_id: booking.id }).catch(() => {});
 
   res.json(booking);
 });
 
-// Listen on all interfaces so phones on the hotspot can reach this laptop.
-app.listen(network.central.httpPort, '0.0.0.0', () => {
-  console.log(`[central] HTTP API on http://localhost:${network.central.httpPort}`);
-});
-
 // ===========================================================================
-// gRPC: CentralService (islands push their outbox here)
+// Island events (outbox sync) — shared by the link and gRPC transports
 // ===========================================================================
 
 // One event as sent by an island (see Event in booking.proto).
@@ -253,41 +277,103 @@ interface IslandEvent {
   created_at_ms: number;
 }
 
+// Stores a batch of island events and returns the ids it accepted. Called for
+// PushEvents over either transport.
+async function storeEvents(events: IslandEvent[]): Promise<string[]> {
+  // Without Supabase there is nowhere to store events: log and acknowledge
+  // them anyway so the sync can still be demonstrated.
+  if (!sb) {
+    for (const e of events) console.log(`[central] event ${e.type} from ${e.island_id} (${e.booking_id})`);
+    return events.map((e) => e.event_id);
+  }
+
+  // 1. Store the events. ignoreDuplicates + the event_id primary key make
+  //    re-delivery harmless (an island resends if it missed our ack).
+  const { error } = await sb.from('island_events').upsert(events.map((e) => ({
+    event_id: e.event_id, island_id: e.island_id, type: e.type, booking_id: e.booking_id || null,
+    payload: JSON.parse(e.payload_json || '{}'), created_at: new Date(Number(e.created_at_ms)).toISOString(),
+  })), { onConflict: 'event_id', ignoreDuplicates: true });
+  if (error) throw new LinkError('INTERNAL', error.message);
+
+  // 2. An ONLINE ticket was checked in at an island: mirror the status so the
+  //    guest's app shows "checked in". Walk-in events are only stored.
+  const redeemed = events.filter((e) => e.type === 'REDEEMED' && JSON.parse(e.payload_json).source === 'ONLINE');
+  for (const e of redeemed) {
+    await sb.from('bookings').update({ status: 'REDEEMED', updated_at: new Date().toISOString() })
+      .eq('id', e.booking_id).eq('status', 'CONFIRMED');
+  }
+
+  // 3. Acknowledge: the island marks these events as sent.
+  return events.map((e) => e.event_id);
+}
+
+// ===========================================================================
+// Start: HTTP API + island links on one port, plus the LAN gRPC service
+// ===========================================================================
+
+// One HTTP server for both the app's API and the island links, because a
+// cloud host exposes a single HTTPS port. PORT is set by the cloud host;
+// on a laptop the port comes from the network config.
+const httpServer = createServer(app);
+const PORT = Number(process.env.PORT ?? network.central.httpPort);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`[central] HTTP API on http://localhost:${PORT} (island links on /island-link)`);
+});
+
+// Island links: each island connects here and sends a signed hello first.
+// Anything that does not authenticate within 5 seconds is disconnected.
+const knownIslands = new Set(islands.map((i) => i.id));
+const wss = new WebSocketServer({ server: httpServer, path: '/island-link' });
+wss.on('connection', (ws) => {
+  const helloTimer = setTimeout(() => ws.close(4001, 'no hello'), 5000);
+
+  ws.once('message', (data) => {
+    clearTimeout(helloTimer);
+    let hello;
+    try {
+      hello = JSON.parse(data.toString());
+    } catch {
+      return ws.close(4002, 'bad hello');
+    }
+    if (hello.t !== 'hello' || !knownIslands.has(hello.island) || !verifyHello(secret, hello.island, hello.ts, hello.sig)) {
+      console.warn('[central] rejected an island link (bad island id or signature)');
+      return ws.close(4003, 'not authorized');
+    }
+
+    // Accepted: a newer link from the same island replaces the old one
+    // (e.g. the island reconnected before the old socket timed out).
+    const islandId = hello.island as string;
+    links.get(islandId)?.close();
+    const peer = new Peer(ws, {
+      PushEvents: async (req: { events: IslandEvent[] }) => ({ accepted_event_ids: await storeEvents(req.events) }),
+    });
+    links.set(islandId, peer);
+    ws.send(JSON.stringify({ t: 'welcome', island: islandId }));
+    console.log(`[central] ${islandId} connected over island link`);
+
+    // Keep the connection alive through cloud proxies that drop idle sockets.
+    const heartbeat = setInterval(() => ws.ping(), 25_000);
+    ws.on('close', () => {
+      clearInterval(heartbeat);
+      if (links.get(islandId) === peer) links.delete(islandId);
+      console.log(`[central] ${islandId} link closed`);
+    });
+  });
+});
+
+// gRPC CentralService for islands on the same LAN/hotspot (direct mode).
 const grpcServer = new grpc.Server();
 grpcServer.addService(CentralService.service, {
-  // Receives a batch of island events and acknowledges the ones it stored.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   PushEvents: async (rpc: grpc.ServerUnaryCall<any, any>, cb: grpc.sendUnaryData<any>) => {
-    const events = rpc.request.events as IslandEvent[];
-
-    // Without Supabase there is nowhere to store events: log and acknowledge
-    // them anyway so the sync can still be demonstrated.
-    if (!sb) {
-      for (const e of events) console.log(`[central] event ${e.type} from ${e.island_id} (${e.booking_id})`);
-      return cb(null, { accepted_event_ids: events.map((e) => e.event_id) });
+    try {
+      cb(null, { accepted_event_ids: await storeEvents(rpc.request.events as IslandEvent[]) });
+    } catch (err) {
+      cb({ code: grpc.status.INTERNAL, details: errorText(err) });
     }
-
-    // 1. Store the events. ignoreDuplicates + the event_id primary key make
-    //    re-delivery harmless (an island resends if it missed our ack).
-    const { error } = await sb.from('island_events').upsert(events.map((e) => ({
-      event_id: e.event_id, island_id: e.island_id, type: e.type, booking_id: e.booking_id || null,
-      payload: JSON.parse(e.payload_json || '{}'), created_at: new Date(Number(e.created_at_ms)).toISOString(),
-    })), { onConflict: 'event_id', ignoreDuplicates: true });
-    if (error) return cb({ code: grpc.status.INTERNAL, details: error.message });
-
-    // 2. An ONLINE ticket was checked in at an island: mirror the status so the
-    //    guest's app shows "checked in". Walk-in events are only stored.
-    const redeemed = events.filter((e) => e.type === 'REDEEMED' && JSON.parse(e.payload_json).source === 'ONLINE');
-    for (const e of redeemed) {
-      await sb.from('bookings').update({ status: 'REDEEMED', updated_at: new Date().toISOString() })
-        .eq('id', e.booking_id).eq('status', 'CONFIRMED');
-    }
-
-    // 3. Acknowledge: the island marks these events as sent.
-    cb(null, { accepted_event_ids: events.map((e) => e.event_id) });
   },
 });
 grpcServer.bindAsync(`0.0.0.0:${network.central.grpcPort}`, grpc.ServerCredentials.createInsecure(), (err) => {
-  if (err) throw err;
+  if (err) return console.warn(`[central] gRPC not started (${err.message}); island links still work`);
   console.log(`[central] gRPC CentralService on :${network.central.grpcPort}`);
 });

@@ -21,9 +21,11 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // ---------------------------------------------------------------------------
 
 // One machine on the network: its IP/hostname, the HTTP port (browser/app
-// traffic) and the gRPC port (server-to-server traffic).
+// traffic) and the gRPC port (server-to-server traffic). host is null in the
+// cloud setup, where islands are not called directly but connect out to
+// central over the island link (shared/link.ts).
 export interface Endpoint {
-  host: string;
+  host: string | null;
   httpPort: number;
   grpcPort: number;
 }
@@ -82,8 +84,10 @@ function readJson<T>(path: string): T {
 }
 
 // Loads the network layout. NETWORK=hotspot picks config/network.hotspot.json
-// (real laptop IPs on demo day); the default "local" runs everything on
-// 127.0.0.1 with different ports so one laptop can host the whole system.
+// (real laptop IPs on demo day); NETWORK=cloud picks config/network.cloud.json
+// (central on a cloud host, islands anywhere with internet); the default
+// "local" runs everything on 127.0.0.1 with different ports so one laptop can
+// host the whole system.
 export function loadNetwork(): NetworkConfig {
   const name = process.env.NETWORK ?? 'local';
   return readJson<NetworkConfig>(join(ROOT, 'config', `network.${name}.json`));

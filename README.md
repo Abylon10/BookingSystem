@@ -6,6 +6,8 @@ and each island keeps working when it loses its link to the mainland.
 
 See **[DESIGN.md](DESIGN.md)** for the architecture, race-condition handling, and team plan.
 Teammates: set up your laptop with **[docs/TEAM-SETUP.md](docs/TEAM-SETUP.md)**.
+Islands far apart (different internet connections): **[docs/DEPLOY-CLOUD.md](docs/DEPLOY-CLOUD.md)** —
+central on Render, islands connect out over a secure WebSocket link.
 
 ```
 app/        Expo app (customer + staff scanner)            → phones

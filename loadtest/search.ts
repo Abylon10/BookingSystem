@@ -17,6 +17,9 @@ import { loadNetwork } from '../shared/config.ts';
 const { values } = parseArgs({ options: { runs: { type: 'string', default: '20' } } });
 const { central } = loadNetwork();
 const runs = Number(values.runs);
+// Central's address: CENTRAL_URL when central runs in the cloud, otherwise
+// the host/port from the network config.
+const centralUrl = process.env.CENTRAL_URL?.replace(/\/+$/, '') ?? `http://${central.host ?? '127.0.0.1'}:${central.httpPort}`;
 
 // Runs `runs` searches in one mode and returns average and 95th-percentile
 // time. Uses fanoutMs, measured by central itself: only the time spent calling
@@ -25,7 +28,7 @@ const runs = Number(values.runs);
 async function bench(mode: 'sequential' | 'parallel') {
   const times: number[] = [];
   for (let i = 0; i < runs; i++) {
-    const r = await (await fetch(`http://${central.host}:${central.httpPort}/api/listings?mode=${mode}`)).json();
+    const r = await (await fetch(`${centralUrl}/api/listings?mode=${mode}`)).json();
     times.push(r.fanoutMs);
   }
   times.sort((a, b) => a - b);

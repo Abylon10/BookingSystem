@@ -40,9 +40,12 @@ async function refresh() {
   const state = await api('/api/state');
   $('island-name').textContent = state.island.name;
   $('partition').checked = state.partitioned;
+  // Link status: "lan" = central calls us directly on the hotspot; otherwise
+  // we keep an outgoing link to central in the cloud ("connected"/"connecting").
+  const link = { lan: 'LAN', connected: 'cloud link up', connecting: 'cloud link reconnecting…' }[state.centralLink] ?? '';
   $('sync-status').textContent = state.partitioned
     ? `Offline from central — ${state.outboxPending} event(s) waiting to sync`
-    : `Connected — ${state.outboxPending} event(s) waiting to sync`;
+    : `Connected (${link}) — ${state.outboxPending} event(s) waiting to sync`;
 
   // Walk-in units left today per listing.
   $('listings').innerHTML = state.listings.map((l) =>

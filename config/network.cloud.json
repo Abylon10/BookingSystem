@@ -1,0 +1,8 @@
+{
+  "central": { "host": null, "httpPort": 4000, "grpcPort": 50060 },
+  "islands": [
+    { "id": "biliran", "host": null, "httpPort": 8081, "grpcPort": 50051 },
+    { "id": "maripipi", "host": null, "httpPort": 8082, "grpcPort": 50052 },
+    { "id": "higatangan", "host": null, "httpPort": 8083, "grpcPort": 50053 }
+  ]
+}

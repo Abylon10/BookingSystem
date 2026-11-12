@@ -27,7 +27,9 @@ const { values } = parseArgs({
 // Resolve the island's HTTP address from the network config.
 const island = loadNetwork().islands.find((i) => i.id === values.island);
 if (!island) throw new Error(`Unknown island ${values.island}`);
-const base = `http://${island.host}:${island.httpPort}`;
+// In the cloud config island hosts are unknown (null): test an island running
+// on this laptop instead.
+const base = `http://${island.host ?? '127.0.0.1'}:${island.httpPort}`;
 const clients = Number(values.clients);
 
 // Reads how many walk-in units the island says are left for the listing/day.
