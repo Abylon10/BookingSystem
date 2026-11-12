@@ -2,15 +2,16 @@
  * app/src/screens/Confirmation.tsx
  *
  * Shown after payment, and when opening a booking from "My bookings".
- * There is no ticket: the guest shows THIS information at the island's front
- * desk. The receptionist searches the reference (or name) and checks that the
- * ID matches the type and last 4 shown here, then checks the guest in.
+ * There is no ticket to scan: the guest shows THIS screen at the island's
+ * front desk. The receptionist searches the reference (or name) and checks
+ * that the ID matches the type and last 4 shown here, then checks them in.
  */
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, cancelBooking, getBooking, type Booking } from '../api';
-import { colors, peso, radius, space } from '../theme';
-import { Button, Card, ErrorBox, Header, InfoRow, prettyDay, StatusBadge } from '../ui';
+import { PackageImage } from '../scene';
+import { colors, peso, radius, shadow, space } from '../theme';
+import { Button, Card, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
 
 export function Confirmation({ booking: initial, onDone, justPaid }: { booking: Booking; onDone: () => void; justPaid?: boolean }) {
   const [b, setB] = useState(initial);
@@ -54,37 +55,42 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
 
   return (
     <View style={st.screen}>
-      <Header title={justPaid ? 'You’re booked!' : 'Booking'} subtitle={`${b.package_name} · ${b.island_name}`} onBack={onDone} />
+      <TopBar title={justPaid ? 'You’re booked!' : 'My booking'} onBack={onDone} />
       <ScrollView contentContainerStyle={st.body}>
-        {/* Big reference: what the receptionist types in */}
-        <View style={st.refBox}>
-          <Text style={st.refLabel}>Show this at the {b.island_name} front desk</Text>
-          <Text style={st.ref} selectable>{b.reference}</Text>
-          <StatusBadge status={b.status} />
+        {/* Pass card: picture, big reference, status */}
+        <View style={st.pass}>
+          <PackageImage packageId={b.package_id} style={st.passImg} />
+          <View style={st.passBody}>
+            <Text style={st.passLabel}>Show this at the {b.island_name} front desk</Text>
+            <Text style={st.ref} selectable>{b.reference}</Text>
+            <StatusBadge status={b.status} center />
+          </View>
+          {/* Dashed tear line, like a ticket stub */}
+          <View style={st.tear} />
+          <View style={st.passFoot}>
+            <View style={st.idIcon}><Ionicons name="id-card-outline" size={22} color={colors.ink} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.idTitle}>{b.guest_name}</Text>
+              <Text style={st.idText}>Bring your {b.id_type} ending {b.id_last4}</Text>
+            </View>
+          </View>
         </View>
 
-        {b.stale && <Text style={st.stale}>The island is offline; this is the last copy central received.</Text>}
+        {b.stale && <ErrorBox tone="notice" message="The island is offline; this is the last copy central received." />}
 
         {/* Trip details */}
         <Card>
           <InfoRow label="Package" value={b.package_name} />
           <InfoRow label="Where" value={b.location} />
-          <InfoRow label="Date" value={prettyDay(b.day)} />
-          <InfoRow label="Length" value={b.nights ? `${b.nights} night${b.nights > 1 ? 's' : ''}` : 'Day trip'} />
+          <InfoRow label="Date" value={tripDates(b.day, b.nights)} />
           <InfoRow label="Guests" value={String(b.guests)} />
-          <InfoRow label="Paid" value={peso(b.total_php)} strong />
-          {b.payment && <InfoRow label="Payment ref" value={`${b.payment.ref} (${b.payment.method})`} />}
-        </Card>
-
-        {/* Who must show up and which ID they must bring */}
-        <Card>
-          <InfoRow label="Guest" value={b.guest_name} />
-          <InfoRow label="Bring your ID" value={`${b.id_type} ending ${b.id_last4}`} />
           <InfoRow label="E-mail" value={b.email} />
+          {b.payment && <InfoRow label="Payment ref" value={`${b.payment.ref} (${b.payment.method})`} />}
+          <InfoRow label="Paid" value={peso(b.total_php)} strong />
         </Card>
 
         <ErrorBox message={error} />
-        <Button label="Refresh status" onPress={refresh} busy={busy === 'refresh'} disabled={!!busy} variant="ghost" />
+        <Button label="Refresh status" onPress={refresh} busy={busy === 'refresh'} disabled={!!busy} variant="ghost" icon="refresh" />
         {canCancel && <Button label="Cancel booking" onPress={cancel} busy={busy === 'cancel'} disabled={!!busy} variant="danger" />}
         <Button label="Done" onPress={onDone} />
       </ScrollView>
@@ -94,10 +100,16 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
 
 // Styles for this screen.
 const st = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.sand },
+  screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  refBox: { backgroundColor: colors.ink, borderRadius: radius.md, padding: space.lg, alignItems: 'center', gap: space.sm },
-  refLabel: { color: '#D6E6EA', fontSize: 13 },
-  ref: { color: colors.accent, fontSize: 34, fontWeight: '800', letterSpacing: 2 },
-  stale: { backgroundColor: '#FBEBD7', color: colors.ink, padding: space.md, borderRadius: radius.sm },
+  pass: { backgroundColor: '#fff', borderRadius: radius.lg, overflow: 'hidden', ...shadow },
+  passImg: { height: 140 },
+  passBody: { padding: space.lg, alignItems: 'center', gap: 8 },
+  passLabel: { color: colors.muted, fontSize: 13 },
+  ref: { color: colors.ink, fontSize: 36, fontWeight: '800', letterSpacing: 2 },
+  tear: { borderTopWidth: 2, borderStyle: 'dashed', borderColor: colors.line, marginHorizontal: space.md },
+  passFoot: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, backgroundColor: '#FFF7E0' },
+  idIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.sun, alignItems: 'center', justifyContent: 'center' },
+  idTitle: { color: colors.ink, fontWeight: '800', fontSize: 15 },
+  idText: { color: colors.ink, fontSize: 13 },
 });

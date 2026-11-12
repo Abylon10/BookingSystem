@@ -7,16 +7,20 @@
  * (compensating step of the saga) and the units go back on sale.
  */
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, payBooking, type Booking } from '../api';
-import { colors, peso, radius, space } from '../theme';
-import { Button, Card, ErrorBox, Header, InfoRow, Pills, prettyDay } from '../ui';
+import { colors, peso, radius, shadow, space } from '../theme';
+import { Button, Card, ErrorBox, InfoRow, Ionicons, TopBar, tripDates } from '../ui';
 
 // Payment methods shown to the guest (all simulated).
-const METHODS = ['GCash', 'Maya', 'Card'];
+const METHODS: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
+  { id: 'maya', label: 'Maya', icon: 'wallet-outline' },
+  { id: 'card', label: 'Credit / debit card', icon: 'card-outline' },
+];
 
 export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPaid: (b: Booking) => void; onCancel: () => void }) {
-  const [method, setMethod] = useState(METHODS[0]);
+  const [method, setMethod] = useState(METHODS[0].id);
   const [busy, setBusy] = useState<'pay' | 'fail' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [released, setReleased] = useState(false);
@@ -27,7 +31,7 @@ export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPai
     setBusy(fail ? 'fail' : 'pay');
     setError(null);
     try {
-      onPaid(await payBooking(booking.reference, method.toLowerCase(), fail));
+      onPaid(await payBooking(booking.reference, method, fail));
     } catch (err) {
       const e = err as ApiError;
       // 402 = declined and released; 409 = hold already expired/released.
@@ -39,39 +43,51 @@ export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPai
   }
 
   const expired = left === 0;
+  const over = released || expired;
 
   return (
     <View style={st.screen}>
-      <Header title="Payment" subtitle={`${booking.package_name} · ${booking.island_name}`} onBack={onCancel} />
+      <TopBar title="Payment" onBack={onCancel} />
       <ScrollView contentContainerStyle={st.body}>
         {/* Hold timer: the island keeps the units only until it runs out */}
-        <View style={[st.timer, (expired || released) && { backgroundColor: colors.danger }]}>
-          <Text style={st.timerText}>
-            {released ? 'Hold released' : expired ? 'Hold expired' : `Spot held for ${fmt(left)}`}
-          </Text>
-          <Text style={st.timerRef}>Ref {booking.reference}</Text>
+        <View style={[st.timer, over && { backgroundColor: colors.danger }]}>
+          <Ionicons name={over ? 'close-circle-outline' : 'time-outline'} size={26} color={colors.sun} />
+          <View style={{ flex: 1 }}>
+            <Text style={st.timerText}>{released ? 'Hold released' : expired ? 'Hold expired' : `Spot held for ${fmt(left)}`}</Text>
+            <Text style={st.timerRef}>Reference {booking.reference}</Text>
+          </View>
         </View>
 
         {/* What is being paid for */}
         <Card>
           <InfoRow label="Package" value={booking.package_name} />
-          <InfoRow label="Date" value={prettyDay(booking.day)} />
+          <InfoRow label="Date" value={tripDates(booking.day, booking.nights)} />
           <InfoRow label="Guests" value={String(booking.guests)} />
           <InfoRow label="Guest" value={booking.guest_name} />
-          <InfoRow label="Amount" value={peso(booking.total_php)} strong />
+          <View style={st.divider} />
+          <InfoRow label="Total" value={peso(booking.total_php)} strong />
         </Card>
 
-        {released || expired ? (
+        {over ? (
           <>
             <ErrorBox message={error ?? 'The hold ran out before payment. Nothing was charged; please book again.'} />
-            <Button label="Back to packages" onPress={onCancel} />
+            <Button label="Back to trips" onPress={onCancel} />
           </>
         ) : (
           <>
-            <Text style={st.section}>Pay with</Text>
-            <Pills options={METHODS} value={method} onChange={setMethod} />
+            {/* Method list (radio style) */}
+            <Text style={st.h}>Pay with</Text>
+            <View style={{ gap: 10 }}>
+              {METHODS.map((m) => (
+                <Pressable key={m.id} onPress={() => setMethod(m.id)} style={[st.method, method === m.id && st.methodOn]}>
+                  <View style={st.methodIcon}><Ionicons name={m.icon} size={20} color={colors.primary} /></View>
+                  <Text style={st.methodText}>{m.label}</Text>
+                  <Ionicons name={method === m.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={method === m.id ? colors.primary : colors.line} />
+                </Pressable>
+              ))}
+            </View>
             <ErrorBox message={error} />
-            <Button label={`Pay ${peso(booking.total_php)}`} onPress={() => pay(false)} busy={busy === 'pay'} disabled={!!busy} variant="accent" />
+            <Button label={`Pay ${peso(booking.total_php)}`} onPress={() => pay(false)} busy={busy === 'pay'} disabled={!!busy} variant="accent" icon="shield-checkmark-outline" />
             {/* Demo button for the class: shows the saga's compensating step */}
             <Button label="Simulate failed payment" onPress={() => pay(true)} busy={busy === 'fail'} disabled={!!busy} variant="ghost" />
             <Text style={st.hint}>Demo only: no real payment is made.</Text>
@@ -101,11 +117,16 @@ function fmt(sec: number | null) {
 
 // Styles for this screen.
 const st = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.sand },
+  screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  timer: { backgroundColor: colors.ink, borderRadius: radius.md, padding: space.md, alignItems: 'center' },
-  timerText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  timerRef: { color: '#D6E6EA', marginTop: 2 },
-  section: { color: colors.ink, fontWeight: '700', fontSize: 15 },
+  timer: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: radius.md, padding: space.md },
+  timerText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  timerRef: { color: '#B9DCEA', marginTop: 2 },
+  divider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },
+  h: { color: colors.ink, fontWeight: '800', fontSize: 17 },
+  method: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 12, borderWidth: 1.5, borderColor: 'transparent', ...shadow, shadowOpacity: 0.05 },
+  methodOn: { borderColor: colors.primary },
+  methodIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.skySoft, alignItems: 'center', justifyContent: 'center' },
+  methodText: { flex: 1, color: colors.ink, fontWeight: '600', fontSize: 15 },
   hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
 });

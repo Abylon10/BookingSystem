@@ -1,124 +1,179 @@
 /**
  * app/src/screens/PackageDetail.tsx
  *
- * Package detail + booking form. Shows what the package includes, then asks
- * for the guest's details. "Reserve" sends a HOLD to central, which forwards
- * it to the island: the units are set aside for a few minutes while the guest
- * pays. Sold out (409) and island offline (503) are shown as plain messages.
+ * Package detail: big picture with the price tag, then a rounded sheet with
+ * the name, place, information, what's included, and the date. The bottom
+ * bar holds the guest stepper and "Book now" (reference design).
+ *
+ * Changing the date or guests asks central again, so the price and spots
+ * shown are always what the island can actually sell.
  */
-import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
-import { ApiError, holdBooking, newRequestId, type Booking, type GuestDetails, type Package } from '../api';
-import { colors, peso, space } from '../theme';
-import { Button, Card, ErrorBox, Field, Header, InfoRow, Pills, prettyDay } from '../ui';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { searchPackages, type Package } from '../api';
+import { PackageImage } from '../scene';
+import { colors, peso, radius, shadow, space } from '../theme';
+import { addDays, Button, DateSheet, ErrorBox, Ionicons, isoDay, RoundButton, Stepper, tripDates } from '../ui';
+import { unavailableReason } from './Explore';
 
-// ID types the front desk accepts (matches the island console).
-const ID_TYPES = ['PhilSys ID', 'Passport', "Driver's License", 'UMID', 'Student ID'];
+const TODAY = isoDay(new Date());
+const LAST_DAY = addDays(TODAY, 59);
 
-export function PackageDetail({ pkg, onBack, onHeld }: { pkg: Package; onBack: () => void; onHeld: (b: Booking) => void }) {
-  // Form values and per-field validation errors.
-  const [form, setForm] = useState<GuestDetails>({ guestName: '', email: '', phone: '', idType: ID_TYPES[0], idLast4: '' });
-  const [errors, setErrors] = useState<Partial<Record<keyof GuestDetails, string>>>({});
-  const [busy, setBusy] = useState(false);
+export function PackageDetail({ pkg: initial, onBack, onBook, onChange }: {
+  pkg: Package;
+  onBack: () => void;
+  onBook: (p: Package) => void;
+  onChange: (day: string, guests: number) => void; // keeps Explore's filters in step
+}) {
+  // Latest copy of the package for the chosen date/guests.
+  const [pkg, setPkg] = useState(initial);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [calendar, setCalendar] = useState(false);
+  const [more, setMore] = useState(false);
 
-  // One request id per booking attempt, reused if the guest taps "Reserve"
-  // again after a network error, so a retry never books twice.
-  const requestId = useRef(newRequestId());
-
-  // Updates one form field and clears its error.
-  const set = (k: keyof GuestDetails) => (v: string) => {
-    setForm((f) => ({ ...f, [k]: v }));
-    setErrors((e) => ({ ...e, [k]: undefined }));
-  };
-
-  // Checks the form on the phone first (the island checks again).
-  function validate() {
-    const e: typeof errors = {};
-    if (form.guestName.trim().length < 2) e.guestName = 'Enter the name on the ID';
-    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Enter a valid e-mail';
-    if (!/^\d{4}$/.test(form.idLast4.trim())) e.idLast4 = 'Last 4 digits of the ID number';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  }
-
-  // Sends the hold. On success → payment screen.
-  async function reserve() {
-    if (!validate()) return;
-    setBusy(true);
-    setError(null);
+  // Re-checks price and spots on the island when date or guests change.
+  async function refresh(day: string, guests: number) {
+    onChange(day, guests);
+    setPkg((p) => ({ ...p, day, guests }));
+    setLoading(true);
     try {
-      const booking = await holdBooking(requestId.current, pkg.id, pkg.day, pkg.guests, {
-        ...form, guestName: form.guestName.trim(), email: form.email.trim(), idLast4: form.idLast4.trim(),
-      });
-      onHeld(booking);
+      const r = await searchPackages(day, guests);
+      const fresh = r.packages.find((p) => p.id === initial.id);
+      if (fresh) { setPkg(fresh); setError(null); } else setError(`${initial.island_name} is offline right now, so this package can't be booked online.`);
     } catch (err) {
-      const e = err as ApiError;
-      // Friendly text for the expected failures; central's text otherwise.
-      if (e.status === 409) setError(`Sorry, it just sold out: ${e.message}`);
-      else if (e.status === 503) setError(`${pkg.island_name} is offline right now, so it can't take online bookings. Please try again later.`);
-      else setError(e.message);
-      // A definite "no" (4xx) means a new attempt should get a new id.
-      if (e.status >= 400 && e.status < 500) requestId.current = newRequestId();
+      setError((err as Error).message);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  const blocked = !pkg.available || pkg.guests > pkg.max_guests;
+  // Keep the package in sync if the screen is reopened with another one.
+  useEffect(() => setPkg(initial), [initial]);
+
+  const reason = unavailableReason(pkg);
+  const blocked = !!reason || !!error;
 
   return (
-    <KeyboardAvoidingView style={st.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Header title={pkg.name} subtitle={`${pkg.island_name} · ${pkg.location}`} onBack={onBack} />
-      <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
-        {/* About the package and what it includes */}
-        <Card>
-          <Text style={st.desc}>{pkg.description}</Text>
-          <Text style={st.section}>Includes</Text>
-          {pkg.items.map((i) => (
-            <Text key={i.service_id} style={st.item}>• {i.name} × {i.qty}{i.per_guest ? ' per guest' : ''}</Text>
-          ))}
-        </Card>
+    <View style={st.screen}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 130 }} bounces={false}>
+        {/* Hero picture with back button, island tag and price tag */}
+        <View style={st.hero}>
+          <PackageImage packageId={pkg.id} style={StyleSheet.absoluteFill} />
+          <View style={st.heroTop}>
+            <RoundButton icon="chevron-back" onPress={onBack} />
+            <View style={st.islandTag}><Text style={st.islandTagText}>{pkg.island_name}</Text></View>
+          </View>
+          <View style={st.priceTag}>
+            <Text style={st.priceText}>{peso(pkg.price_php)}</Text>
+            <Text style={st.priceUnit}>{pkg.pricing === 'per_guest' ? 'per guest' : 'per package'}</Text>
+          </View>
+        </View>
 
-        {/* Summary of the trip being booked */}
-        <Card>
-          <InfoRow label="Date" value={prettyDay(pkg.day)} />
-          <InfoRow label="Length" value={pkg.nights ? `${pkg.nights} night${pkg.nights > 1 ? 's' : ''}` : 'Day trip'} />
-          <InfoRow label="Guests" value={String(pkg.guests)} />
-          <InfoRow label="Price" value={pkg.pricing === 'per_guest' ? `${peso(pkg.price_php)} per guest` : `${peso(pkg.price_php)} per package`} />
-          <InfoRow label="Total" value={peso(pkg.total_php)} strong />
-        </Card>
+        {/* Rounded sheet with the details */}
+        <View style={st.sheet}>
+          <Text style={st.name}>{pkg.name}</Text>
+          <View style={st.place}>
+            <Ionicons name="location-outline" size={15} color={colors.muted} />
+            <Text style={st.placeText}>{pkg.location} · {pkg.island_name}</Text>
+          </View>
 
-        {blocked ? (
-          <ErrorBox message={pkg.guests > pkg.max_guests ? `This package allows at most ${pkg.max_guests} guests.` : 'Not available on this date. Try another date.'} />
-        ) : (
-          <>
-            {/* Guest details; the ID is checked at the front desk on arrival */}
-            <Text style={st.section}>Guest details</Text>
-            <Field label="Full name (as on ID)" value={form.guestName} onChangeText={set('guestName')} error={errors.guestName} autoCapitalize="words" />
-            <Field label="E-mail" value={form.email} onChangeText={set('email')} error={errors.email} keyboardType="email-address" autoCapitalize="none" />
-            <Field label="Mobile (optional)" value={form.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
-            <Text style={st.label}>ID you will show at the front desk</Text>
-            <Pills options={ID_TYPES} value={form.idType} onChange={set('idType')} />
-            <Field label="Last 4 of the ID number" value={form.idLast4} onChangeText={set('idLast4')} error={errors.idLast4} maxLength={4} keyboardType="number-pad" />
+          {/* Quick facts */}
+          <View style={st.facts}>
+            <Fact icon={pkg.nights ? 'moon-outline' : 'sunny-outline'} text={pkg.nights ? `${pkg.nights} night${pkg.nights > 1 ? 's' : ''}` : 'Day trip'} />
+            <Fact icon="people-outline" text={`Up to ${pkg.max_guests}`} />
+            <Fact icon="ticket-outline" text={reason ?? `${pkg.spots} left`} warn={!!reason} />
+          </View>
 
-            <ErrorBox message={error} />
-            <Button label={`Reserve · ${peso(pkg.total_php)}`} onPress={reserve} busy={busy} variant="accent" />
-            <Text style={st.hint}>We hold your spot for 10 minutes while you pay.</Text>
-          </>
-        )}
+          {/* Information with "Read more" */}
+          <Text style={st.h}>Information</Text>
+          <Text style={st.desc} numberOfLines={more ? undefined : 3}>{pkg.description}</Text>
+          {pkg.description.length > 120 && (
+            <Pressable onPress={() => setMore(!more)}><Text style={st.more}>{more ? 'Show less' : 'Read more'}</Text></Pressable>
+          )}
+
+          {/* What the package includes */}
+          <Text style={st.h}>Included</Text>
+          <View style={{ gap: 8 }}>
+            {pkg.items.map((i) => (
+              <View key={i.service_id} style={st.item}>
+                <View style={st.check}><Ionicons name="checkmark" size={14} color={colors.primary} /></View>
+                <Text style={st.itemText}>{i.name}{i.qty > 1 ? ` × ${i.qty}` : ''}{i.per_guest ? ' per guest' : ''}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Date (opens the calendar) */}
+          <Text style={st.h}>Date</Text>
+          <Pressable onPress={() => setCalendar(true)} style={st.dateRow}>
+            <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+            <Text style={st.dateText}>{tripDates(pkg.day, pkg.nights)}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+
+          {error ? <ErrorBox message={error} /> : reason ? <ErrorBox message={pkg.guests > pkg.max_guests ? `This package allows at most ${pkg.max_guests} guests.` : 'Fully booked on this date. Try another date.'} /> : null}
+        </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {/* Bottom bar: guests + Book now with the total */}
+      <View style={st.bar}>
+        <View>
+          <Text style={st.barLabel}>Guests</Text>
+          <Stepper value={pkg.guests} min={1} max={8} onChange={(g) => refresh(pkg.day, g)} />
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={st.barTotal}>{loading ? ' ' : `Total ${peso(pkg.total_php)}`}</Text>
+          {loading ? <ActivityIndicator color={colors.primary} style={{ height: 54 }} />
+            : <Button label="Book now" variant="accent" onPress={() => onBook(pkg)} disabled={blocked} />}
+        </View>
+      </View>
+
+      <DateSheet open={calendar} onClose={() => setCalendar(false)} value={pkg.day} min={TODAY} max={LAST_DAY} nights={pkg.nights} onChange={(d) => refresh(d, pkg.guests)} />
+    </View>
+  );
+}
+
+// Small icon + text fact chip.
+function Fact({ icon, text, warn }: { icon: keyof typeof Ionicons.glyphMap; text: string; warn?: boolean }) {
+  return (
+    <View style={st.fact}>
+      <Ionicons name={icon} size={16} color={warn ? colors.danger : colors.primary} />
+      <Text style={[st.factText, warn && { color: colors.danger }]}>{text}</Text>
+    </View>
   );
 }
 
 // Styles for this screen.
 const st = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.sand },
-  body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  desc: { color: colors.ink, lineHeight: 21 },
-  section: { color: colors.ink, fontWeight: '700', fontSize: 15, marginTop: space.xs },
-  item: { color: colors.muted },
-  label: { color: colors.ink, fontWeight: '600', fontSize: 13 },
-  hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
+  screen: { flex: 1, backgroundColor: '#fff' },
+  hero: { height: 360, backgroundColor: colors.sky },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 52, paddingHorizontal: space.md },
+  islandTag: { backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
+  islandTagText: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  priceTag: { position: 'absolute', right: space.md, bottom: 44, backgroundColor: colors.accent, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', ...shadow },
+  priceText: { color: colors.ink, fontWeight: '800', fontSize: 18 },
+  priceUnit: { color: colors.ink, fontSize: 11 },
+
+  sheet: { marginTop: -28, backgroundColor: '#fff', borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 8 },
+  name: { color: colors.ink, fontSize: 24, fontWeight: '800' },
+  place: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  placeText: { color: colors.muted },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  fact: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.skySoft, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7 },
+  factText: { color: colors.ink, fontWeight: '600', fontSize: 13 },
+  h: { color: colors.ink, fontSize: 17, fontWeight: '800', marginTop: space.md },
+  desc: { color: colors.muted, lineHeight: 22 },
+  more: { color: colors.primary, fontWeight: '700' },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  check: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.skySoft, alignItems: 'center', justifyContent: 'center' },
+  itemText: { color: colors.ink, flex: 1 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14, marginBottom: space.sm },
+  dateText: { flex: 1, color: colors.ink, fontWeight: '600' },
+
+  bar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-end', gap: space.md,
+    backgroundColor: '#fff', paddingHorizontal: space.md, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: colors.line,
+  },
+  barLabel: { color: colors.ink, fontWeight: '700', marginBottom: 4, marginLeft: 6 },
+  barTotal: { color: colors.primary, fontWeight: '800', textAlign: 'center' },
 });

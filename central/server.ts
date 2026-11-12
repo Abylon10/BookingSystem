@@ -189,6 +189,17 @@ async function search(mode: 'parallel' | 'sequential', day: string, guests = 1) 
 const app = express();
 app.use(express.json());
 
+// CORS for the public guest API only (/api/packages, /api/bookings…), so the
+// app also works as a web page (Expo web). Phones don't need it. The admin
+// and island-link routes stay same-origin.
+app.use(['/api/packages', '/api/listings', '/api/bookings'], (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // Central dashboard: static page at "/" plus its login-protected data API.
 app.use(express.static(join(ROOT, 'central', 'dashboard')));
 mountAdmin(app, { sb, secret, search });
