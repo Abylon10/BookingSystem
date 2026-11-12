@@ -73,8 +73,32 @@ function pollPeerFor(islandId: string): PollPeer {
 // Calls a method on one island, preferring its link (works across the
 // internet) and falling back to direct gRPC (LAN). Throws when neither is
 // available, which callers treat as "island offline".
+// Consecutive timed-out calls per island over a WebSocket link. Some networks
+// (proxies, antivirus "web shields") let a WebSocket open and even answer
+// heartbeats, yet hold back the data, so every call times out. After 3 such
+// timeouts in a row central closes the link with code 4010, which tells the
+// island to switch to HTTPS polling.
+const wsTimeouts = new Map<string, number>();
+
 function callIsland<Res>(island: Island, method: string, request: object, timeoutMs = 1500): Promise<Res> {
   const link = links.get(island.id);
+  if (link instanceof Peer && link.open) {
+    return link.call<Res>(method, request, timeoutMs).then(
+      (res) => { wsTimeouts.delete(island.id); return res; },
+      (err) => {
+        if (err.code === 'DEADLINE_EXCEEDED') {
+          const n = (wsTimeouts.get(island.id) ?? 0) + 1;
+          wsTimeouts.set(island.id, n);
+          if (n >= 3) {
+            console.log(`[central] ${island.id}: WebSocket calls keep timing out; telling it to use HTTPS polling`);
+            wsTimeouts.delete(island.id);
+            link.close(4010, 'calls timing out; use polling');
+          }
+        }
+        throw err;
+      },
+    );
+  }
   if (link?.open) return link.call<Res>(method, request, timeoutMs);
   if (island.client) return call<object, Res>(island.client, method, request, timeoutMs);
   return Promise.reject(new LinkError('UNAVAILABLE', `${island.id} is not connected`));

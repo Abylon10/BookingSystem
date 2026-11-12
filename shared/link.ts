@@ -95,8 +95,9 @@ export class Peer {
   }
 
   // Closes the link; pending calls fail with UNAVAILABLE (see constructor).
-  close(): void {
-    this.ws.close(4000, 'replaced');
+  // Code 4010 tells the island to switch to HTTPS polling.
+  close(code = 4000, reason = 'replaced'): void {
+    this.ws.close(code, reason);
   }
 
   // Calls a method on the other side. Fails with DEADLINE_EXCEEDED after

@@ -286,6 +286,12 @@ function connectLink(): void {
   ws.on('close', (code, reasonBuf) => {
     link = null;
     const reason = reasonBuf.toString() || 'no reason given';
+    // 4010: central saw our WebSocket calls time out (data held back by the
+    // network) and asks us to use HTTPS polling instead.
+    if (code === 4010 && process.env.LINK_MODE !== 'ws') {
+      startPolling('central reports the WebSocket link is not delivering calls');
+      return;
+    }
     if (code === 4003) console.error(`[${island.id}] central rejected the link — is TICKET_SECRET the same as central's?`);
     else if (welcomed) console.warn(`[${island.id}] link to central lost (code ${code}); reconnecting…`);
     else {
