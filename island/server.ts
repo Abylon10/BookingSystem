@@ -261,6 +261,18 @@ function connectLink(): void {
     ws.send(JSON.stringify({ t: 'hello', island: island.id, ts, sig: helloSignature(secret, island.id, ts) }));
     link = new Peer(ws, linkHandlers);
   });
+
+  // Central pings every 25 s. If no ping arrives for 70 s, this link is dead
+  // (Wi-Fi changed, laptop woke from sleep): drop it and reconnect.
+  let lastPing = Date.now();
+  ws.on('ping', () => { lastPing = Date.now(); });
+  const watchdog = setInterval(() => {
+    if (welcomed && Date.now() - lastPing > 70_000) {
+      console.warn(`[${island.id}] no heartbeat from central for 70 s; reconnecting`);
+      ws.terminate();
+    }
+  }, 10_000);
+  ws.on('close', () => clearInterval(watchdog));
   ws.on('message', (data) => {
     const msg = data.toString();
     if (msg.includes('"t":"welcome"')) {

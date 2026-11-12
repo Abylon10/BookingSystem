@@ -374,8 +374,21 @@ wss.on('connection', (ws) => {
     ws.send(JSON.stringify({ t: 'welcome', island: islandId }));
     console.log(`[central] ${islandId} connected over island link`);
 
-    // Keep the connection alive through cloud proxies that drop idle sockets.
-    const heartbeat = setInterval(() => ws.ping(), 25_000);
+    // Heartbeat every 25 s: keeps the connection alive through cloud proxies
+    // that drop idle sockets, and detects dead links (laptop asleep, Wi-Fi
+    // gone without a proper close). No pong since the last ping -> the link is
+    // dead: drop it so the island shows offline at once and can reconnect.
+    let alive = true;
+    ws.on('pong', () => { alive = true; });
+    const heartbeat = setInterval(() => {
+      if (!alive) {
+        console.log(`[central] ${islandId} stopped answering heartbeats; dropping its link`);
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, 25_000);
     ws.on('close', () => {
       clearInterval(heartbeat);
       if (links.get(islandId) === peer) links.delete(islandId);
