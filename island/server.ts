@@ -206,10 +206,19 @@ function connectLink(): void {
       console.log(`[${island.id}] connected to central at ${CENTRAL_URL}`);
     }
   });
-  ws.on('close', (code) => {
+  ws.on('close', (code, reasonBuf) => {
     link = null;
+    const reason = reasonBuf.toString() || 'no reason given';
     if (code === 4003) console.error(`[${island.id}] central rejected the link — is TICKET_SECRET the same as central's?`);
     else if (welcomed) console.warn(`[${island.id}] link to central lost (code ${code}); reconnecting…`);
+    else {
+      // Closed before central welcomed us: report it (once per distinct cause).
+      const text = `closed before welcome (code ${code}: ${reason})`;
+      if (text !== lastLinkError) {
+        lastLinkError = text;
+        console.warn(`[${island.id}] link to central ${text} — retrying`);
+      }
+    }
     setTimeout(connectLink, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   });
