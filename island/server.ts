@@ -172,9 +172,11 @@ let link: Peer | null = null;
 // Opens the link, signs the hello, and reconnects with backoff when it drops
 // (Wi-Fi blip, central restarting, cloud host waking up).
 let reconnectDelay = 1000;
+let lastLinkError = '';
 function connectLink(): void {
   if (!CENTRAL_URL) return;
   const ws = new WebSocket(`${CENTRAL_URL.replace(/^http/, 'ws')}/island-link`);
+  let welcomed = false;
   const linkHandlers: Handlers = {};
   for (const method of Object.keys(api)) linkHandlers[method] = (req) => serve(method, req);
 
@@ -186,18 +188,32 @@ function connectLink(): void {
   ws.on('message', (data) => {
     const msg = data.toString();
     if (msg.includes('"t":"welcome"')) {
+      welcomed = true;
       reconnectDelay = 1000;
+      lastLinkError = '';
       console.log(`[${island.id}] connected to central at ${CENTRAL_URL}`);
     }
   });
   ws.on('close', (code) => {
     link = null;
     if (code === 4003) console.error(`[${island.id}] central rejected the link — is TICKET_SECRET the same as central's?`);
+    else if (welcomed) console.warn(`[${island.id}] link to central lost (code ${code}); reconnecting…`);
     setTimeout(connectLink, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   });
-  ws.on('error', () => { /* close follows; reconnect happens there */ });
+  // Connection failures (no internet, wrong URL, blocked by a proxy/firewall,
+  // central asleep). Printed once per distinct error so the terminal shows
+  // why the island is not linked, without repeating every retry.
+  ws.on('error', (err) => {
+    const text = err.message || String(err);
+    if (text !== lastLinkError) {
+      lastLinkError = text;
+      console.warn(`[${island.id}] cannot reach central at ${CENTRAL_URL}: ${text} — retrying`);
+    }
+  });
 }
+if (CENTRAL_URL) console.log(`[${island.id}] cloud mode: connecting to central at ${CENTRAL_URL}…`);
+else console.log(`[${island.id}] LAN mode (no CENTRAL_URL set): central must reach this laptop directly`);
 connectLink();
 
 // Free cloud hosts sleep when they get no HTTP traffic for a while; a light
