@@ -158,7 +158,8 @@ function render(s) {
   $('k-bookings').textContent = k.bookingsToday;
   $('k-bookings-sub').textContent = `${k.onlineToday} online · ${k.walkinToday} walk-in`;
   $('k-checkins').textContent = k.checkedInToday;
-  $('k-seats').textContent = k.onlineSeatsToday;
+  $('k-seats').textContent = `${k.packagesAvailable} / ${k.packagesTotal}`;
+  $('k-seats-sub').textContent = `₱${Number(k.revenuePhp).toLocaleString('en-PH')} in bookings so far`;
 
   // Island nodes
   $('island-cards').innerHTML = s.islands.map((i) => {
@@ -241,7 +242,7 @@ $('a-speed').addEventListener('click', async () => {
   out.textContent = 'Running 5 sequential + 5 parallel searches…';
   const avg = async (mode) => {
     let total = 0;
-    for (let n = 0; n < 5; n++) total += (await (await fetch(`/api/listings?mode=${mode}`)).json()).fanoutMs;
+    for (let n = 0; n < 5; n++) total += (await (await fetch(`/api/packages?mode=${mode}`)).json()).fanoutMs;
     return Math.round(total / 5);
   };
   const seq = await avg('sequential');
@@ -249,6 +250,44 @@ $('a-speed').addEventListener('click', async () => {
   out.innerHTML = `Sequential <b>${seq} ms</b> · Parallel <b>${par} ms</b> · Speedup <b>${(seq / Math.max(par, 1)).toFixed(2)}×</b>`;
 });
 $('a-refresh').addEventListener('click', refresh);
+
+// Parallel report benchmark: worker threads 1/2/4/8 on the server.
+if (window.Chart) {
+  charts.bench = new Chart($('c-bench'), {
+    type: 'bar',
+    data: { labels: [], datasets: [
+      { type: 'bar', label: 'Measured speedup', data: [], backgroundColor: '#6CA3A2', borderRadius: 8, maxBarThickness: 54 },
+      { type: 'line', label: 'Ideal (= threads)', data: [], borderColor: '#EA9940', borderDash: [6, 4], pointRadius: 3, fill: false },
+    ] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'speedup ×' } } } },
+  });
+}
+$('bench-run').addEventListener('click', async () => {
+  const btn = $('bench-run');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  $('bench-note').textContent = 'Running the report with 1, 2, 4 and 8 threads (3 runs each)…';
+  try {
+    const r = await adminGet(`/api/admin/report-bench?records=${$('bench-records').value}`);
+    if (charts.bench) {
+      charts.bench.data.labels = r.rows.map((x) => `${x.threads} thread${x.threads > 1 ? 's' : ''}`);
+      charts.bench.data.datasets[0].data = r.rows.map((x) => x.speedup);
+      charts.bench.data.datasets[1].data = r.rows.map((x) => x.threads);
+      charts.bench.update();
+    }
+    $('bench-table').innerHTML = `<tr><th>Threads</th><th>Time</th><th>Speedup</th><th>Efficiency</th></tr>` +
+      r.rows.map((x) => `<tr><td>${x.threads}</td><td>${x.ms} ms</td><td>${x.speedup}×</td><td>${Math.round(x.efficiency * 100)}%</td></tr>`).join('');
+    const best = r.rows.reduce((a, b) => (b.speedup > a.speedup ? b : a));
+    $('bench-note').textContent = `${r.records.toLocaleString()} records on ${r.cores} CPU core(s): best ${best.speedup}× with ${best.threads} threads. ` +
+      `Totals identical for every thread count. Speedup is limited by the number of cores (Amdahl's law).`;
+  } catch (err) {
+    $('bench-note').textContent = `Benchmark failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run benchmark';
+  }
+});
 
 // Sidebar: highlight the clicked section.
 for (const a of document.querySelectorAll('.sidebar nav:first-of-type a')) {

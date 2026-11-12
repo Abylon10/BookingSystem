@@ -2,13 +2,15 @@
  * island/server.ts
  *
  * Entry point of an island node (runs on Laptops 2-4). One process serves:
- *  - IslandService      : answers central (search, register/cancel online
- *                         bookings, rebalance, ping) over EITHER transport:
- *                           - island link: we connect OUT to CENTRAL_URL
- *                             (works from any internet connection)
+ *  - IslandService      : answers central (catalog, availability, hold /
+ *                         confirm / release / cancel online bookings, lookup)
+ *                         over whichever transport works:
+ *                           - island link: we connect OUT to CENTRAL_URL over a
+ *                             WebSocket, or HTTPS polling where WebSockets are
+ *                             blocked (works from any internet connection)
  *                           - gRPC server: central calls our IP (same LAN only)
- *  - HTTP API + console : used by staff on this laptop and by the staff
- *                         scanner phone on the hotspot
+ *  - HTTP API + console : front desk (login, arrivals, walk-ins, blocking,
+ *                         staff accounts) on this laptop
  *  - outbox sender      : pushes local events to central every 2 seconds
  *
  * Start with:  node island/server.ts <islandId>   (or npm run island:<id>)
@@ -17,13 +19,12 @@
 import express from 'express';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
-import { ROOT, addDays, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { ROOT, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
 import { LinkError, Peer, helloSignature, type Handlers } from '../shared/link.ts';
-import { openDb, seedIsland, transaction } from './db.ts';
-import {
-  BookingError, bookWalkin, cancelOnline, redeem, registerOnline, ticketFor, verify, type WalkinRequest,
-} from './bookings.ts';
+import { openDb, seedIsland } from './db.ts';
+import { BookingError, createEngine, type ReserveRequest } from './engine.ts';
 
 // ===========================================================================
 // Startup: work out which island this process is, open its database
@@ -50,11 +51,12 @@ function findIsland() {
 const { me, island } = findIsland();
 
 // Open the local database, add any missing catalog rows / inventory days, and
-// remember which listings belong here (used to reject other islands' tickets).
+// create the booking engine. Unpaid online holds expire after holdMinutes.
 const secret = ticketSecret();
 const db = openDb(island.id);
 seedIsland(db, seed, island);
-const listingIds = new Set(island.listings.map((l) => l.id));
+const engine = createEngine(db, island, seed.holdMinutes);
+setInterval(() => engine.expireHolds(), 30_000);
 
 // "Disconnect from Central" switch, toggled from the staff console.
 // When true the island behaves as if its link to the mainland is down: it
@@ -74,52 +76,34 @@ const LINK_LATENCY_MS = Number(process.env.LINK_LATENCY_MS ?? 0);
 // The methods central may call, as plain functions. The same map is served
 // over the island link and over the LAN gRPC server (both set up below).
 const api: Handlers = {
-  // Search fan-out: return this island's catalog. Central calls every island
-  // at the same time and merges the answers.
-  GetCatalog: () => ({
-    island_id: island.id,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    listings: (db.prepare('SELECT * FROM listings').all() as any[]).map((l) => ({
-      ...l, island_id: island.id, facilities: JSON.parse(l.facilities),
-    })),
+  // Catalog: this island's active packages and their services.
+  GetCatalog: () => ({ island_id: island.id, packages: engine.catalog() }),
+
+  // Search fan-out: packages bookable for a date and guest count. Central
+  // calls every island at the same time and merges the answers.
+  SearchAvailability: (req) => ({
+    island_id: island.id, island_name: island.name,
+    packages: engine.availability(req.day ?? today(), Math.max(1, Number(req.guests) || 1)),
   }),
 
-  // Walk-in units left for one listing over a range of days.
-  GetAvailability: (req) => {
-    const rows = db.prepare(
-      `SELECT day AS date, available AS walkin_available FROM inventory
-        WHERE listing_id = ? AND day >= ? AND day < ? ORDER BY day`,
-    ).all(req.listing_id, req.from_date, addDays(req.from_date, req.days || 1));
-    return { listing_id: req.listing_id, days: rows };
+  // Online booking, step 1: reserve the units (HELD, expires if unpaid).
+  // The same engine call as a walk-in, on the same inventory rows.
+  HoldBooking: (req: ReserveRequest) => engine.reserve(req, 'ONLINE', 'online'),
+  // Step 2a: payment went through.
+  ConfirmBooking: (req) => engine.confirm(req.reference),
+  // Step 2b (compensation): payment failed or abandoned -> give units back.
+  ReleaseHold: (req) => engine.release(req.reference),
+  // Customer cancels from the app (e-mail must match the booking).
+  CancelBooking: (req) => {
+    const b = engine.get(req.reference);
+    if (!b || b.email.toLowerCase() !== String(req.email ?? '').toLowerCase()) throw new BookingError(404, 'Booking not found', 'NOT_FOUND');
+    return engine.cancel(req.reference);
   },
-
-  // Central sold an online ticket for one of our listings: store it so staff
-  // can look it up by its manual code. Idempotent (see registerOnline).
-  RegisterOnlineBooking: (req) => {
-    registerOnline(db, {
-      id: req.booking_id, listing_id: req.listing_id, day: req.date, nights: req.nights || 1,
-      qty: req.qty, guest_name: req.guest_name, id_type: req.id_type, id_last4: req.id_last4, code: req.code,
-    });
-    return { ok: true, message: 'registered' };
-  },
-
-  // Central cancelled an online booking (refund): block it from check-in.
-  CancelOnlineBooking: (req) => ({ ok: cancelOnline(db, req.booking_id), message: '' }),
-
-  // Rebalance: move units between this island's walk-in pool and central's
-  // online pool. "to_walkin" adds units here; "to_online" removes them (only if
-  // enough are left). Central adjusts its own pool after a successful reply.
-  // TODO(rebalance): store request_id so a retried transfer is not applied twice.
-  TransferAllotment: (req) => {
-    const delta = req.direction === 'to_walkin' ? req.qty : -req.qty;
-    return transaction(db, () => {
-      const { changes } = db.prepare(
-        'UPDATE inventory SET available = available + ? WHERE listing_id = ? AND day = ? AND available + ? >= 0',
-      ).run(delta, req.listing_id, req.date, delta);
-      const row = db.prepare('SELECT available FROM inventory WHERE listing_id = ? AND day = ?')
-        .get(req.listing_id, req.date) as { available: number } | undefined;
-      return { ok: changes === 1, walkin_available: row?.available ?? 0, message: '' };
-    });
+  // "My booking" lookup from the app (reference + e-mail).
+  GetBooking: (req) => {
+    const b = engine.get(req.reference);
+    if (!b || b.email.toLowerCase() !== String(req.email ?? '').toLowerCase()) throw new BookingError(404, 'Booking not found', 'NOT_FOUND');
+    return b;
   },
 
   // Health check: central uses it to see if the island is reachable.
@@ -140,15 +124,17 @@ async function serve(method: string, req: unknown): Promise<unknown> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GrpcHandler = (call: grpc.ServerUnaryCall<any, any>, cb: grpc.sendUnaryData<any>) => void;
-const grpcHandlers: Record<string, GrpcHandler> = {};
-for (const method of Object.keys(api)) {
-  grpcHandlers[method] = (rpc, cb) => {
-    serve(method, rpc.request).then(
-      (res) => cb(null, res),
-      (err) => cb({ code: err.code === 'UNAVAILABLE' ? grpc.status.UNAVAILABLE : grpc.status.INTERNAL, details: err.message }),
+// Every method travels as Invoke(method, json) so the gRPC contract stays one
+// small, stable message while the methods evolve (see proto/booking.proto).
+// Errors keep their code in the message as "CODE: text" for central.
+const grpcHandlers: Record<string, GrpcHandler> = {
+  Invoke: (rpc, cb) => {
+    serve(rpc.request.method, JSON.parse(rpc.request.json || '{}')).then(
+      (res) => cb(null, { method: rpc.request.method, json: JSON.stringify(res) }),
+      (err) => cb({ code: err.code === 'UNAVAILABLE' ? grpc.status.UNAVAILABLE : grpc.status.UNKNOWN, details: `${err.code ?? 'INTERNAL'}: ${err.message}` }),
     );
-  };
-}
+  },
+};
 const grpcServer = new grpc.Server();
 grpcServer.addService(IslandService.service, grpcHandlers);
 grpcServer.bindAsync(`0.0.0.0:${me.grpcPort}`, grpc.ServerCredentials.createInsecure(), (err) => {
@@ -380,14 +366,23 @@ async function drainOutbox() {
     else return;
     const mark = db.prepare('UPDATE outbox SET sent_at = ? WHERE event_id = ?');
     for (const id of ack.accepted_event_ids) mark.run(Date.now(), id);
-  } catch {
-    // Central unreachable: keep the events and try again on the next tick.
+  } catch (err) {
+    // Central unreachable or refused: keep the events and try again on the
+    // next tick. Log each distinct reason once so problems are visible.
+    const text = (err as Error).message ?? String(err);
+    if (text !== lastOutboxError) {
+      lastOutboxError = text;
+      console.warn(`[${island.id}] sync to central failed: ${text} — will retry`);
+    }
+    return;
   }
+  lastOutboxError = '';
 }
+let lastOutboxError = '';
 setInterval(drainOutbox, 2000);
 
 // ===========================================================================
-// HTTP: staff console (this laptop) + staff scanner phone (hotspot)
+// HTTP: front desk console (this laptop)
 // ===========================================================================
 
 const app = express();
@@ -395,50 +390,105 @@ app.use(express.json());
 // Serves island/console/index.html, style.css and app.js at "/".
 app.use(express.static(join(ROOT, 'island', 'console')));
 
-// Turns a handler into an Express route that always answers JSON:
-// the return value on success, { error } with the right status on failure.
-const wrap = (fn: (req: express.Request) => unknown) => (req: express.Request, res: express.Response) => {
+// --- Staff sessions ---------------------------------------------------------
+// Logins are checked against this island's own staff table, so they work while
+// the island is offline. A session token is "<user>.<role>.<expiry>.<hmac>".
+const SESSION_HOURS = 12;
+const signSession = (user: string, role: string, exp: number) =>
+  createHmac('sha256', secret).update(`staff:${island.id}:${user}:${role}:${exp}`).digest('hex');
+function newSession(user: string, role: string) {
+  const exp = Date.now() + SESSION_HOURS * 3600_000;
+  return { token: `${user}.${role}.${exp}.${signSession(user, role, exp)}`, user, role };
+}
+function readSession(req: express.Request): { user: string; role: string } | null {
+  const [user, role, expText, sig] = (req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').split('.');
+  const exp = Number(expText);
+  if (!user || !sig || !(exp > Date.now())) return null;
+  const expected = Buffer.from(signSession(user, role, exp), 'hex');
+  const given = Buffer.from(sig, 'hex');
+  return given.length === expected.length && timingSafeEqual(given, expected) ? { user, role } : null;
+}
+
+// Turns a handler into an Express route that answers JSON and requires a
+// signed-in staff member (and the node_admin role when adminOnly).
+type Handler = (req: express.Request, staff: { user: string; role: string }) => unknown;
+const route = (fn: Handler, adminOnly = false) => (req: express.Request, res: express.Response) => {
+  const staff = readSession(req);
+  if (!staff) return res.status(401).json({ error: 'Sign in again' });
+  if (adminOnly && staff.role !== 'node_admin') return res.status(403).json({ error: 'Node admin only' });
   try {
-    res.json(fn(req));
+    res.json(fn(req, staff));
   } catch (err) {
     const status = err instanceof BookingError ? err.status : 500;
     res.status(status).json({ error: (err as Error).message });
   }
 };
 
-// Dashboard data for the console: island name, partition switch, number of
-// events waiting to sync, and walk-in units left per listing for one day.
-app.get('/api/state', wrap((req) => {
-  const day = (req.query.day as string) ?? today();
-  const listings = db.prepare(
-    `SELECT l.id, l.kind, l.name, l.price_php, i.available AS walkin_available
-       FROM listings l LEFT JOIN inventory i ON i.listing_id = l.id AND i.day = ?`,
-  ).all(day);
+// First run: no staff yet -> the console asks to create the node admin.
+app.get('/api/session', (req, res) => {
+  res.json({ island: { id: island.id, name: island.name }, needsSetup: !engine.hasStaff(), staff: readSession(req) });
+});
+app.post('/api/setup', (req, res) => {
+  if (engine.hasStaff()) return res.status(409).json({ error: 'Already set up; sign in instead' });
+  try {
+    engine.addStaff(req.body.username, req.body.password, 'node_admin');
+    res.json(newSession(String(req.body.username).toLowerCase(), 'node_admin'));
+  } catch (err) {
+    res.status((err as BookingError).status ?? 500).json({ error: (err as Error).message });
+  }
+});
+app.post('/api/login', (req, res) => {
+  const role = engine.verifyLogin(req.body.username, req.body.password);
+  if (!role) return res.status(401).json({ error: 'Wrong username or password' });
+  res.json(newSession(String(req.body.username).toLowerCase(), role));
+});
+
+// --- Front desk -------------------------------------------------------------
+
+// Header + availability data: link status, sync backlog, packages for a date
+// and guest count, and every service's inventory that day.
+app.get('/api/state', route((req) => {
+  const day = (req.query.day as string) || today();
+  const guests = Math.max(1, Number(req.query.guests) || 1);
   const outboxPending = (db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NULL').get() as { n: number }).n;
   const centralLink = !CENTRAL_URL ? 'lan'
     : link?.open ? 'connected'
       : linkMode === 'poll' ? (pollConnected ? 'polling' : 'connecting') : 'connecting';
-  return { island: { id: island.id, name: island.name }, day, partitioned, outboxPending, centralLink, listings };
+  return {
+    island: { id: island.id, name: island.name }, day, guests, partitioned, outboxPending, centralLink,
+    packages: engine.availability(day, guests), inventory: engine.inventory(day),
+  };
 }));
 
-// The 100 most recent bookings (walk-in and online) for the console table.
-app.get('/api/bookings', wrap(() =>
-  db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 100').all()));
-
-// Face-to-face booking from the console. Returns the booking and its ticket.
-app.post('/api/walkin', wrap((req) => {
-  const booking = bookWalkin(db, secret, req.body as WalkinRequest);
-  return { booking, ticket: ticketFor(secret, booking) };
+// Today's (or a given day's) arrivals, or a search by reference / name.
+app.get('/api/bookings', route((req) => {
+  if (req.query.q) return engine.search(String(req.query.q));
+  if (req.query.day) return engine.arrivals(String(req.query.day));
+  return engine.recent(100);
 }));
 
-// Check-in step 1: identify a scanned QR ({ qr }) or typed code ({ code }).
-app.post('/api/verify', wrap((req) => verify(db, secret, listingIds, req.body)));
+// Face-to-face booking: paid at the desk, so it is CONFIRMED at once.
+app.post('/api/walkin', route((req, staff) => engine.reserve(req.body as ReserveRequest, 'WALKIN', staff.user)));
 
-// Check-in step 2: staff confirmed the ID; check the guest in (once only).
-app.post('/api/redeem', wrap((req) => redeem(db, req.body.bookingId)));
+// Arrival: staff matched the physical ID with the booking -> CHECKED_IN (once only).
+app.post('/api/bookings/:ref/checkin', route((req) => engine.checkIn(String(req.params.ref))));
+app.post('/api/bookings/:ref/cancel', route((req) => engine.cancel(String(req.params.ref))));
 
-// The "Disconnect from Central" switch.
-app.post('/api/partition', wrap((req) => {
+// Mark units unavailable (repairs, weather, boat down) / make them available again.
+app.post('/api/blocks', route((req) =>
+  engine.block(req.body.serviceId, req.body.day, Math.max(1, Number(req.body.days) || 1), Number(req.body.units) || 0)));
+app.post('/api/blocks/release', route((req) => engine.unblock(req.body.serviceId, req.body.day, Number(req.body.units) || 0)));
+
+// Staff accounts: the node admin creates and disables receptionists.
+app.get('/api/staff', route(() => engine.listStaff(), true));
+app.post('/api/staff', route((req) => {
+  engine.addStaff(req.body.username, req.body.password, 'receptionist');
+  return engine.listStaff();
+}, true));
+app.post('/api/staff/:user/active', route((req) => ({ ok: engine.setStaffActive(String(req.params.user), Boolean(req.body.active)) }), true));
+
+// The "Disconnect from Central" switch (demo of an island losing its link).
+app.post('/api/partition', route((req) => {
   partitioned = Boolean(req.body.on);
   console.log(`[${island.id}] partition ${partitioned ? 'ON — cut off from central' : 'OFF — reconnected'}`);
   return { partitioned };

@@ -1,78 +1,87 @@
 /*
  * island/console/style.css
- * Styling for the front desk console, using the "Travel Agency" palette (DESIGN.md §10).
+ * Front desk console, "Travel Agency" palette (DESIGN.md §10).
  */
 
-/* Palette tokens. Change colours here, not in the rules below. */
+/* Palette tokens */
 :root {
-  --ink: #12212E;        /* text */
-  --primary: #307082;    /* header, buttons */
-  --secondary: #6CA3A2;  /* badges */
-  --sand: #ECE7DC;       /* page background */
-  --accent: #EA9940;     /* prices, confirm button (use ink text on it) */
-  --card: #ffffff;
-  --muted: #5b6b75;
-  --danger: #b4432f;
-  --ok: #2f7d5b;
+  --ink: #12212E; --primary: #307082; --secondary: #6CA3A2; --sand: #ECE7DC; --accent: #EA9940;
+  --card: #ffffff; --muted: #5b6b75; --danger: #b4432f; --ok: #2f7d5b; --line: #e4ded2;
 }
 
-/* Page basics */
+/* Page */
 * { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: var(--sand);
-  color: var(--ink);
-}
-
-/* Header bar with the island name and the partition switch */
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 24px;
-  background: var(--primary);
-  color: #fff;
-}
-header h1 { margin: 0; font-size: 1.4rem; }
-header .muted { color: #d6e6ea; margin: 2px 0 0; }
-.toggle { display: flex; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; }
-.toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
-
-/* Responsive card grid: cards wrap onto new rows on narrow screens */
-main {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  padding: 16px;
-}
-.card { background: var(--card); border-radius: 14px; padding: 16px 20px; }
-.card.wide { grid-column: 1 / -1; overflow-x: auto; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--sand); color: var(--ink); }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+h1 { margin: 0; font-size: 1.35rem; }
 h2 { font-size: 1.05rem; margin: 0 0 12px; }
-.muted { color: var(--muted); font-size: 0.9rem; }
+h3 { font-size: .95rem; margin: 18px 0 8px; color: var(--primary); }
 
-/* Availability list */
-.listings { list-style: none; padding: 0; margin: 0; }
-.listings li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--sand); }
-.price { color: var(--accent); font-weight: 700; }
+/* Header */
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 22px; background: var(--primary); color: #fff; flex-wrap: wrap; }
+header .muted { color: #d6e6ea; margin: 2px 0 0; }
+.head-right { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.toggle { display: flex; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+.who { background: rgba(255, 255, 255, .15); padding: 4px 10px; border-radius: 999px; font-size: .85rem; }
 
-/* Forms and buttons */
-form { display: flex; gap: 8px; flex-wrap: wrap; }
-form.grid { display: grid; grid-template-columns: 1fr 1fr; }
+/* Tabs */
+.tabs { display: flex; gap: 4px; padding: 10px 16px 0; background: var(--primary); overflow-x: auto; }
+.tabs button { background: transparent; color: #d6e6ea; border-radius: 10px 10px 0 0; padding: 9px 16px; font-weight: 600; }
+.tabs button.active { background: var(--sand); color: var(--ink); }
+
+/* Layout */
+main { padding: 16px; display: grid; gap: 16px; max-width: 1200px; margin: 0 auto; }
+.tab { display: grid; gap: 16px; }
+.card { background: var(--card); border-radius: 14px; padding: 16px 20px; overflow-x: auto; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row.between { justify-content: space-between; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.grid2 label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+.span2 { grid-column: 1 / -1; }
+.total-row { display: flex; justify-content: space-between; align-items: center; }
+
+/* Controls */
 input, select, button { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid #cfd8d6; }
 input, select { background: #fbfaf7; color: var(--ink); min-width: 0; }
+#find-q { flex: 1; min-width: 220px; }
 button { background: var(--primary); color: #fff; border: none; font-weight: 600; cursor: pointer; }
-button.confirm { background: var(--accent); color: var(--ink); }
+button.ok { background: var(--accent); color: var(--ink); }
+button.ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .5); color: #fff; padding: 6px 12px; }
+button.link { background: transparent; color: var(--primary); padding: 4px 8px; border: 1px solid var(--line); }
+button.danger { background: transparent; color: var(--danger); border: 1px solid #e9c9c1; padding: 4px 8px; }
 
-/* Result boxes after verify / book: green bar = ok, red bar = problem */
+/* Lists and cards inside */
+.list { display: grid; gap: 10px; margin-top: 12px; }
+.item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.item b { font-size: 1rem; }
+.item .meta { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.idcheck { background: #fbf3e6; border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: .9rem; }
+.price { color: var(--accent); font-weight: 700; font-size: 1.05rem; }
+
+/* Results */
 .result { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--sand); }
-.result.ok { border-left: 4px solid var(--ok); }
-.result.bad { border-left: 4px solid var(--danger); }
+.result.ok { border-left: 4px solid var(--ok); border-radius: 0 10px 10px 0; }
+.result.bad { border-left: 4px solid var(--danger); border-radius: 0 10px 10px 0; }
+.error { color: var(--danger); min-height: 1.2em; margin: 0; }
 
-/* Bookings table and status badges (badge colour follows the status) */
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sand); white-space: nowrap; }
-.badge { padding: 2px 8px; border-radius: 999px; background: var(--secondary); color: #fff; font-size: 0.8rem; }
-.badge.REDEEMED { background: var(--ok); }
-.badge.CANCELLED { background: var(--danger); }
+/* Tables and status badges */
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+.badge { padding: 2px 9px; border-radius: 999px; background: var(--secondary); color: #fff; font-size: .78rem; font-weight: 600; }
+.badge.CHECKED_IN { background: var(--ok); }
+.badge.CANCELLED, .badge.EXPIRED, .badge.RELEASED { background: var(--danger); }
+.badge.HELD { background: var(--accent); color: var(--ink); }
+.badge.ONLINE { background: var(--primary); }
+.badge.WALKIN { background: #8a6e3f; }
+.badge.sold { background: var(--danger); }
+
+/* Sign-in */
+.auth { position: fixed; inset: 0; z-index: 10; background: var(--primary); display: grid; place-items: center; padding: 16px; }
+.auth-card { width: min(380px, 100%); display: grid; gap: 10px; }
+.auth-card h1 { color: var(--primary); }
+
+@media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }

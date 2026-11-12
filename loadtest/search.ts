@@ -28,7 +28,7 @@ const centralUrl = process.env.CENTRAL_URL?.replace(/\/+$/, '') ?? `http://${cen
 async function bench(mode: 'sequential' | 'parallel') {
   const times: number[] = [];
   for (let i = 0; i < runs; i++) {
-    const r = await (await fetch(`${centralUrl}/api/listings?mode=${mode}`)).json();
+    const r = await (await fetch(`${centralUrl}/api/packages?mode=${mode}`)).json();
     times.push(r.fanoutMs);
   }
   times.sort((a, b) => a - b);

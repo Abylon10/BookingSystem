@@ -2,86 +2,91 @@
  * island/db.ts
  *
  * The island's local database (built-in node:sqlite, one file per island in
- * data/). It holds everything the island OWNS and needs while offline:
- *  - listings   : catalog of this island's resort and tour
- *  - inventory  : the WALK-IN pool, units left per listing per day
- *  - bookings   : walk-in bookings sold here + online bookings it was told about
- *  - outbox     : events waiting to be sent to central
+ * data/). Everything here is OWNED by this island; central only keeps copies.
+ *  - services       : rooms, tours, boats with a daily capacity
+ *  - packages       : what customers buy, made of services (package_items)
+ *  - inventory      : per service per day: capacity, booked, blocked
+ *  - bookings       : online and walk-in, with a short reference (MRP-7F3K2)
+ *  - booking_lines  : exactly which units each booking took (to give them back)
+ *  - staff          : node admin and receptionist logins (password hashes)
+ *  - outbox         : events waiting to be sent to central
  */
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ROOT, addDays, splitCapacity, today, type Seed, type SeedIsland } from '../shared/config.ts';
+import { ROOT, addDays, today, type Seed, type SeedIsland } from '../shared/config.ts';
 
 export type Db = DatabaseSync;
 
-// Shape of a row in the bookings table (column names as in SQL).
-export interface BookingRow {
-  id: string;
-  request_id: string | null;
-  source: 'WALKIN' | 'ONLINE';
-  listing_id: string;
-  day: string;
-  nights: number;
-  qty: number;
-  guest_name: string;
-  id_type: string;
-  id_last4: string;
-  total_php: number;
-  code: string;
-  status: 'CONFIRMED' | 'REDEEMED' | 'CANCELLED' | 'NO_SHOW';
-  created_at: number;
-  redeemed_at: number | null;
-}
-
-// Opens (or creates) data/island-<id>.db and makes sure all tables exist.
+// Opens (or creates) data/island-<id>-v2.db and makes sure all tables exist.
+// The "-v2" file keeps the earlier prototype's database out of the way.
 export function openDb(islandId: string): Db {
-  // data/ is git-ignored; create it on first run.
   const dir = join(ROOT, 'data');
   mkdirSync(dir, { recursive: true });
-  const db = new DatabaseSync(join(dir, `island-${islandId}.db`));
-
-  // Schema. CREATE TABLE IF NOT EXISTS makes this safe to run on every start.
+  const db = new DatabaseSync(join(dir, `island-${islandId}-v2.db`));
   db.exec(`
-    -- WAL lets readers (the console refreshing) run while a booking is written.
-    -- busy_timeout makes a second writer wait up to 5 s instead of failing.
+    -- WAL lets the console read while a booking is written; busy_timeout makes
+    -- a second writer wait instead of failing.
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 5000;
 
-    -- Catalog copy for this island. facilities is a JSON array string.
-    CREATE TABLE IF NOT EXISTS listings (
-      id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, location TEXT NOT NULL,
-      description TEXT NOT NULL, price_php INTEGER NOT NULL, facilities TEXT NOT NULL, image TEXT
+    CREATE TABLE IF NOT EXISTS services (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL,
+      capacity INTEGER NOT NULL CHECK (capacity >= 0)
     );
 
-    -- The WALK-IN pool: units left per listing per day. This island is the only
-    -- writer. The CHECK makes a negative count impossible even if code is wrong.
+    CREATE TABLE IF NOT EXISTS packages (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, description TEXT NOT NULL,
+      price_php INTEGER NOT NULL, pricing TEXT NOT NULL CHECK (pricing IN ('per_guest', 'per_package')),
+      nights INTEGER NOT NULL, max_guests INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS package_items (
+      package_id TEXT NOT NULL REFERENCES packages (id), service_id TEXT NOT NULL REFERENCES services (id),
+      qty INTEGER NOT NULL, per_guest INTEGER NOT NULL,
+      PRIMARY KEY (package_id, service_id)
+    );
+
+    -- One inventory per service per day, shared by online and walk-in sales.
+    -- The CHECK makes overselling impossible even if code is wrong.
     CREATE TABLE IF NOT EXISTS inventory (
-      listing_id TEXT NOT NULL, day TEXT NOT NULL,
-      available INTEGER NOT NULL CHECK (available >= 0),
-      PRIMARY KEY (listing_id, day)
+      service_id TEXT NOT NULL REFERENCES services (id), day TEXT NOT NULL,
+      capacity INTEGER NOT NULL, booked INTEGER NOT NULL DEFAULT 0, blocked INTEGER NOT NULL DEFAULT 0,
+      CHECK (booked >= 0 AND blocked >= 0 AND booked + blocked <= capacity),
+      PRIMARY KEY (service_id, day)
     );
 
-    -- Bookings this island knows about.
-    --   source WALKIN : sold at this desk (request_id = idempotency key)
-    --   source ONLINE : sold by central, registered here for check-in
-    -- code is UNIQUE so two bookings can never share a ticket code.
+    -- Statuses: HELD (online, waiting for payment) -> CONFIRMED -> CHECKED_IN;
+    -- or RELEASED / EXPIRED (hold undone), CANCELLED (units returned).
     CREATE TABLE IF NOT EXISTS bookings (
       id TEXT PRIMARY KEY,
+      reference TEXT NOT NULL UNIQUE,
       request_id TEXT UNIQUE,
-      source TEXT NOT NULL CHECK (source IN ('WALKIN', 'ONLINE')),
-      listing_id TEXT NOT NULL, day TEXT NOT NULL,
-      nights INTEGER NOT NULL, qty INTEGER NOT NULL,
-      guest_name TEXT NOT NULL, id_type TEXT NOT NULL, id_last4 TEXT NOT NULL,
-      total_php INTEGER NOT NULL, code TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'CONFIRMED',
-      created_at INTEGER NOT NULL, redeemed_at INTEGER
+      source TEXT NOT NULL CHECK (source IN ('ONLINE', 'WALKIN')),
+      package_id TEXT NOT NULL REFERENCES packages (id),
+      day TEXT NOT NULL, nights INTEGER NOT NULL, guests INTEGER NOT NULL,
+      guest_name TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
+      id_type TEXT NOT NULL, id_last4 TEXT NOT NULL,
+      total_php INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      hold_expires_at INTEGER,
+      created_by TEXT NOT NULL DEFAULT 'online',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, checked_in_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS bookings_day_idx ON bookings (day);
+
+    CREATE TABLE IF NOT EXISTS booking_lines (
+      booking_id TEXT NOT NULL REFERENCES bookings (id), service_id TEXT NOT NULL, day TEXT NOT NULL,
+      qty INTEGER NOT NULL, PRIMARY KEY (booking_id, service_id, day)
     );
 
-    -- Outbox pattern: each change also writes an event row in the SAME
-    -- transaction, so the change and "tell central about it" can never get out
-    -- of step. sent_at stays NULL until central acknowledges the event.
+    CREATE TABLE IF NOT EXISTS staff (
+      username TEXT PRIMARY KEY, role TEXT NOT NULL CHECK (role IN ('node_admin', 'receptionist')),
+      password_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+    );
+
+    -- Written in the same transaction as the change it describes; drained to central.
     CREATE TABLE IF NOT EXISTS outbox (
       event_id TEXT PRIMARY KEY, type TEXT NOT NULL, booking_id TEXT,
       payload TEXT NOT NULL, created_at INTEGER NOT NULL, sent_at INTEGER
@@ -90,31 +95,30 @@ export function openDb(islandId: string): Db {
   return db;
 }
 
-// Fills listings and the walk-in pool from config/seed.json. INSERT OR IGNORE
-// means existing rows (and units already sold) are never overwritten, so this
-// runs safely on every start and only adds missing days.
+// Fills services, packages and inventory from config/seed.json. INSERT OR
+// IGNORE never overwrites existing rows (or units already sold), so this runs
+// safely on every start and only adds missing days.
 export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
-  const insertListing = db.prepare(`INSERT OR IGNORE INTO listings VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  const insertDay = db.prepare(`INSERT OR IGNORE INTO inventory VALUES (?, ?, ?)`);
+  const addService = db.prepare('INSERT OR IGNORE INTO services VALUES (?, ?, ?, ?)');
+  const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const addItem = db.prepare('INSERT OR IGNORE INTO package_items VALUES (?, ?, ?, ?)');
+  const addDay = db.prepare('INSERT OR IGNORE INTO inventory (service_id, day, capacity) VALUES (?, ?, ?)');
   const start = today();
-
-  // One transaction for all rows: much faster than hundreds of separate commits.
   transaction(db, () => {
-    for (const l of island.listings) {
-      insertListing.run(l.id, l.kind, l.name, l.location, l.description, l.pricePhp,
-        JSON.stringify(l.facilities), l.image);
-
-      // Only the walk-in share goes here; the online share lives in Supabase.
-      const { walkin } = splitCapacity(l.capacity, seed.onlineShare);
-      for (let i = 0; i < seed.inventoryDays; i++) insertDay.run(l.id, addDays(start, i), walkin);
+    for (const s of island.services) {
+      addService.run(s.id, s.kind, s.name, s.capacity);
+      for (let i = 0; i < seed.inventoryDays; i++) addDay.run(s.id, addDays(start, i), s.capacity);
+    }
+    for (const p of island.packages) {
+      addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests);
+      for (const it of p.items) addItem.run(p.id, it.service, it.qty, it.perGuest ? 1 : 0);
     }
   });
 }
 
-// Runs `fn` inside a transaction and commits, or rolls back if it throws.
-// BEGIN IMMEDIATE takes the write lock up front, so two writers (for example
-// the server and a second process on the same file) queue up instead of
-// interleaving their reads and writes.
+// Runs fn inside BEGIN IMMEDIATE and commits, or rolls back if it throws.
+// IMMEDIATE takes the write lock up front, so concurrent writers queue up
+// instead of interleaving their reads and writes.
 export function transaction<T>(db: Db, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -127,14 +131,9 @@ export function transaction<T>(db: Db, fn: () => T): T {
   }
 }
 
-// Adds an event to the outbox. Must be called inside the same transaction as
-// the change it describes (see the outbox table comment above).
+// Adds an event to the outbox. Must run inside the same transaction as the
+// change it describes (outbox pattern).
 export function addOutbox(db: Db, type: string, bookingId: string | null, payload: unknown): void {
-  db.prepare(`INSERT INTO outbox (event_id, type, booking_id, payload, created_at) VALUES (?, ?, ?, ?, ?)`)
+  db.prepare('INSERT INTO outbox (event_id, type, booking_id, payload, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(randomUUID(), type, bookingId, JSON.stringify(payload), Date.now());
-}
-
-// Reads one booking by id, typed. Returns undefined when it does not exist.
-export function getBooking(db: Db, id: string): BookingRow | undefined {
-  return db.prepare('SELECT * FROM bookings WHERE id = ?').get(id) as BookingRow | undefined;
 }

@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { ROOT, loadNetwork, ticketSecret, today } from '../shared/config.ts';
+import { ROOT, islandOfReference, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
 import { mountAdmin } from './admin.ts';
 import { PollPeer, mountPolling } from './poll.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
@@ -100,105 +100,85 @@ function callIsland<Res>(island: Island, method: string, request: object, timeou
     );
   }
   if (link?.open) return link.call<Res>(method, request, timeoutMs);
-  if (island.client) return call<object, Res>(island.client, method, request, timeoutMs);
+  if (island.client) {
+    // LAN gRPC: every method travels as Invoke(method, json). Errors come back
+    // as "CODE: message" and are turned into the same LinkError as the link.
+    return call<object, { json: string }>(island.client, 'Invoke', { method, json: JSON.stringify(request) }, timeoutMs).then(
+      (r) => JSON.parse(r.json) as Res,
+      (err) => {
+        const m = /^([A-Z_]+): (.*)$/.exec(errorText(err));
+        throw m ? new LinkError(m[1], m[2]) : err;
+      },
+    );
+  }
   return Promise.reject(new LinkError('UNAVAILABLE', `${island.id} is not connected`));
 }
 
-// Which island owns a listing. Listing ids start with the island id by
-// convention ("maripipi-sambawan-hopping" -> maripipi).
-const islandOf = (listingId: string) => islands.find((i) => listingId.startsWith(`${i.id}-`));
+// Seed: island names and booking-reference prefixes (MRP-… -> maripipi).
+const seed = loadSeed();
+const islandById = (id: string) => islands.find((i) => i.id === id);
+const ownerOf = (reference: string) => islandById(islandOfReference(seed, reference)?.id ?? '');
 
-// A booking row as returned by Supabase (the bookings table).
-interface Booking {
-  id: string;
-  listing_id: string;
-  day: string;
-  nights: number;
-  qty: number;
-  guest_name: string;
-  id_type: string;
-  id_last4: string;
-  code: string;
-  status: string;
+// Turns an island/link error into an HTTP status for the app.
+function httpStatus(err: unknown): number {
+  const code = (err as LinkError).code ?? errorText(err).split(':')[0];
+  return ({
+    INVALID_ARGUMENT: 400, NOT_FOUND: 404, RESOURCE_EXHAUSTED: 409, FAILED_PRECONDITION: 409, ALREADY_EXISTS: 409,
+    UNAVAILABLE: 503, DEADLINE_EXCEEDED: 504,
+  } as Record<string, number>)[code] ?? 500;
 }
 
 // ===========================================================================
 // Search fan-out (the main parallelism demo on the read path)
 // ===========================================================================
 
-// A listing as merged into the search result. Fields come from the island's
-// catalog (or Supabase's copy when the island is offline).
+// A package as returned by an island's SearchAvailability.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ListingOut = Record<string, any> & { id: string };
+type PackageOut = Record<string, any> & { id: string };
 
-// Asks one island for its catalog and measures how long it took. Never throws:
-// an unreachable or partitioned island is reported as "offline" so the search
-// can still return everything else.
-async function fetchIsland(island: Island) {
+// Asks one island which packages fit the date and guest count, and measures
+// how long it took. Never throws: an unreachable or partitioned island is
+// reported as "offline" so the search can still return everything else.
+async function fetchIsland(island: Island, day: string, guests: number) {
   const started = performance.now();
   try {
-    const reply = await callIsland<{ listings: ListingOut[] }>(island, 'GetCatalog', {});
+    const reply = await callIsland<{ packages: PackageOut[] }>(island, 'SearchAvailability', { day, guests });
     return {
       id: island.id, status: 'online' as const,
       via: !links.get(island.id)?.open ? 'grpc' : links.get(island.id) instanceof PollPeer ? 'poll' : 'link',
-      ms: Math.round(performance.now() - started), listings: reply.listings,
+      ms: Math.round(performance.now() - started), packages: reply.packages,
     };
   } catch (err) {
     return {
       id: island.id, status: 'offline' as const, ms: Math.round(performance.now() - started),
-      error: errorText(err), listings: [] as ListingOut[],
+      error: errorText(err), packages: [] as PackageOut[],
     };
   }
 }
 
-// Builds the search result for one day.
+// Builds the search result for a date and guest count.
 //   mode "parallel"   : ask all islands at the same time (total time = slowest island)
 //   mode "sequential" : ask one after another (total time = sum of all islands)
 // The sequential mode exists only so the benchmark can compare the two.
-async function search(mode: 'parallel' | 'sequential', day: string) {
+// An offline island's packages are left out: only the owning island can
+// confirm a booking, so central never sells what it cannot confirm.
+async function search(mode: 'parallel' | 'sequential', day: string, guests = 1) {
   const started = performance.now();
-
-  // 1. Fan out to the islands.
   let results: Awaited<ReturnType<typeof fetchIsland>>[];
   if (mode === 'parallel') {
-    results = await Promise.all(islands.map(fetchIsland));
+    results = await Promise.all(islands.map((i) => fetchIsland(i, day, guests)));
   } else {
     results = [];
-    for (const island of islands) results.push(await fetchIsland(island));
+    for (const island of islands) results.push(await fetchIsland(island, day, guests));
   }
-  // Time spent talking to the islands only. This is what the parallel vs
-  // sequential benchmark compares; the Supabase lookups below take the same
-  // time in both modes and would only blur the difference.
   const fanoutMs = Math.round(performance.now() - started);
-
-  // 2. For islands that did not answer, fall back to central's own copy of their
-  //    catalog in Supabase, marked stale, so customers still see them.
-  const offline = results.filter((r) => r.status === 'offline').map((r) => r.id);
-  let stale: ListingOut[] = [];
-  if (offline.length && sb) {
-    const { data } = await sb.from('listings').select('*').in('island_id', offline);
-    stale = (data ?? []).map((l) => ({ ...l, stale: true }));
-  }
-
-  // 3. Add how many units are left in the ONLINE pool for that day. This is
-  //    the number the app may sell; the walk-in pool is not shown to customers.
-  const onlineLeft = new Map<string, number>();
-  if (sb) {
-    const { data } = await sb.from('online_inventory').select('listing_id, available').eq('day', day);
-    for (const row of data ?? []) onlineLeft.set(row.listing_id, row.available);
-  }
-
-  // 4. Merge and report timing per island (useful for the report and the app's status chips).
-  const listings = [...results.flatMap((r) => r.listings), ...stale].map((l) => ({
-    ...l, online_available: onlineLeft.get(l.id) ?? null,
-  }));
   return {
-    mode,
-    day,
-    fanoutMs,
+    mode, day, guests, fanoutMs,
     totalMs: Math.round(performance.now() - started),
-    islands: results.map(({ listings: _unused, ...r }) => r),
-    listings,
+    islands: results.map(({ packages: _unused, ...r }) => ({ ...r, name: seed.islands.find((s) => s.id === r.id)?.name })),
+    packages: results.flatMap((r) => r.packages),
+    // Kept for the earlier dashboard/benchmark code that counted "listings".
+    listings: results.flatMap((r) => r.packages),
   };
 }
 
@@ -215,100 +195,88 @@ mountAdmin(app, { sb, secret, search });
 // Island link fallback over plain HTTPS (central/poll.ts).
 mountPolling(app, { secret, knownIslands, pollPeerFor, storeEvents });
 
-// Answers 503 and returns true when Supabase is not configured, so booking
-// routes can bail out with `if (needSupabase(res)) return;`.
-const needSupabase = (res: express.Response) => {
-  if (sb) return false;
-  res.status(503).json({ error: 'Online booking unavailable: Supabase not configured on central' });
-  return true;
-};
-
 // Liveness check used by the app, tests, the cloud host, and the islands'
 // keep-awake ping. Also lists which islands are connected over a link.
 app.get('/health', (_req, res) => res.json({
   ok: true, supabase: Boolean(sb), linkedIslands: [...links].filter(([, p]) => p.open).map(([id]) => id),
 }));
 
-// Search: GET /api/listings?day=YYYY-MM-DD[&mode=sequential]
-app.get('/api/listings', async (req, res) => {
+// Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&mode=sequential]
+const searchRoute: express.RequestHandler = async (req, res) => {
   const mode = req.query.mode === 'sequential' ? 'sequential' : 'parallel';
-  const day = (req.query.day as string) ?? today();
-  res.json(await search(mode, day));
-});
+  const day = (req.query.day as string) || today();
+  const guests = Math.max(1, Number(req.query.guests) || 1);
+  res.json(await search(mode, day, guests));
+};
+app.get('/api/packages', searchRoute);
+app.get('/api/listings', searchRoute); // older name, same result
 
-// Book online: POST /api/bookings with an Idempotency-Key header.
+// Online booking, step 1 — HOLD. The owning island reserves every service of
+// the package in one atomic transaction (same code and rows as a walk-in) and
+// returns a HELD booking that expires if unpaid. Idempotency-Key makes a retry
+// after a timeout return the same booking instead of a second one.
 app.post('/api/bookings', async (req, res) => {
-  if (needSupabase(res)) return;
-
-  // 1. Validate. The idempotency key lets the app retry safely after a
-  //    timeout: the same key always returns the same booking.
-  const b = req.body;
+  const b = req.body ?? {};
   const requestId = req.get('Idempotency-Key') ?? b.requestId;
   if (!requestId) return res.status(400).json({ error: 'Idempotency-Key header required' });
-  if (!/^\d{4}$/.test(b.idLast4 ?? '')) return res.status(400).json({ error: 'idLast4 must be 4 digits' });
-
-  // 2. Take units from the online pool and create the booking in one atomic
-  //    database call (book_online in the migration). Concurrent buyers for the
-  //    last room are serialized by Postgres; the losers get SOLD_OUT.
-  const { data, error } = await sb!.rpc('book_online', {
-    p_booking_id: randomUUID(), p_request_id: requestId, p_listing_id: b.listingId, p_day: b.day,
-    p_nights: b.nights ?? 1, p_qty: b.qty, p_guest_name: b.guestName, p_guest_email: b.guestEmail,
-    p_id_type: b.idType, p_id_last4: b.idLast4, p_code: newCode(secret),
-  });
-  if (error) {
-    const status = error.message.includes('SOLD_OUT') ? 409 : error.message.includes('UNKNOWN_LISTING') ? 404 : 500;
-    return res.status(status).json({ error: error.message });
+  const island = islandById(String(b.packageId ?? '').split('-')[0]);
+  if (!island) return res.status(404).json({ error: 'Unknown package' });
+  try {
+    const booking = await callIsland(island, 'HoldBooking', {
+      requestId, packageId: b.packageId, day: b.day, guests: b.guests, guestName: b.guestName,
+      email: b.email, phone: b.phone, idType: b.idType, idLast4: b.idLast4,
+    }, 8000);
+    res.status(201).json(booking);
+  } catch (err) {
+    res.status(httpStatus(err)).json({ error: errorText(err) });
   }
-  const booking = data as Booking;
-
-  // 3. Sign the QR ticket. The island can verify it offline with the shared secret.
-  const qr = signTicket(secret, {
-    v: 1, id: booking.id, code: booking.code, listing: booking.listing_id, day: booking.day,
-    nights: booking.nights, qty: booking.qty, guest: booking.guest_name, idType: booking.id_type,
-    idLast4: booking.id_last4,
-  });
-
-  // 4. Tell the owning island, so its desk can find the booking by manual code.
-  //    Fire-and-forget: the customer does not wait for it. If the island is
-  //    offline, scanning the signed QR at check-in registers it there anyway.
-  const island = islandOf(booking.listing_id);
-  if (island) {
-    callIsland(island, 'RegisterOnlineBooking', {
-      booking_id: booking.id, listing_id: booking.listing_id, date: booking.day, nights: booking.nights,
-      qty: booking.qty, guest_name: booking.guest_name, id_type: booking.id_type,
-      id_last4: booking.id_last4, code: booking.code,
-    }).catch((err) => console.warn(`[central] could not register ${booking.code} on ${island.id}: ${errorText(err)}`));
-  }
-
-  res.status(201).json({ booking, ticket: { code: booking.code, qr } });
 });
 
-// My bookings: GET /api/bookings?email=... (newest first).
-app.get('/api/bookings', async (req, res) => {
-  if (needSupabase(res)) return;
-  const { data, error } = await sb!.from('bookings').select('*')
-    .eq('guest_email', String(req.query.email ?? '')).order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+// Step 2 — PAY (simulated), then CONFIRM or RELEASE. This is the saga:
+// hold -> pay -> confirm; if payment fails, the compensating step releases
+// the hold so the units go back on sale at once.
+app.post('/api/bookings/:ref/pay', async (req, res) => {
+  const island = ownerOf(req.params.ref);
+  if (!island) return res.status(404).json({ error: 'Unknown booking reference' });
+  const method = String(req.body?.method ?? 'card');
+  const paymentOk = req.body?.simulate !== 'fail';
+  try {
+    if (!paymentOk) {
+      const released = await callIsland(island, 'ReleaseHold', { reference: req.params.ref }, 8000);
+      return res.status(402).json({ error: `Payment with ${method} was declined; the hold was released`, booking: released });
+    }
+    const confirmed = await callIsland(island, 'ConfirmBooking', { reference: req.params.ref, payment: method }, 8000);
+    res.json({ ...(confirmed as object), payment: { method, ref: `PAY-${Date.now().toString(36).toUpperCase()}` } });
+  } catch (err) {
+    res.status(httpStatus(err)).json({ error: errorText(err) });
+  }
 });
 
-// Cancel (refund): POST /api/bookings/:id/cancel.
-// This is the saga's compensating step: undo the booking and give the units
-// back to the online pool, then tell the island so the ticket cannot be used.
-app.post('/api/bookings/:id/cancel', async (req, res) => {
-  if (needSupabase(res)) return;
+// My booking: GET /api/bookings/:ref?email=… — live from the owning island,
+// or from central's copy when that island is offline.
+app.get('/api/bookings/:ref', async (req, res) => {
+  const island = ownerOf(req.params.ref);
+  const email = String(req.query.email ?? '');
+  if (!island) return res.status(404).json({ error: 'Booking not found' });
+  try {
+    res.json(await callIsland(island, 'GetBooking', { reference: req.params.ref, email }, 5000));
+  } catch (err) {
+    if (httpStatus(err) === 404) return res.status(404).json({ error: 'Booking not found' });
+    const copy = sb ? (await sb.from('booking_copies').select('*').eq('reference', req.params.ref.toUpperCase()).maybeSingle()).data : null;
+    if (copy && copy.email.toLowerCase() === email.toLowerCase()) return res.json({ ...copy, stale: true });
+    res.status(httpStatus(err)).json({ error: errorText(err) });
+  }
+});
 
-  // 1. Cancel in Supabase (atomic; only a CONFIRMED booking can be cancelled).
-  const { data, error } = await sb!.rpc('cancel_online', { p_booking_id: req.params.id });
-  if (error) return res.status(error.message.includes('NOT_CANCELLABLE') ? 409 : 500).json({ error: error.message });
-  const booking = data as Booking;
-
-  // 2. Tell the owning island (best effort).
-  // TODO(sync): queue and retry if the island is offline, so it cannot check in a cancelled ticket.
-  const island = islandOf(booking.listing_id);
-  if (island) callIsland(island, 'CancelOnlineBooking', { booking_id: booking.id }).catch(() => {});
-
-  res.json(booking);
+// Cancel: POST /api/bookings/:ref/cancel { email } — the island returns the units.
+app.post('/api/bookings/:ref/cancel', async (req, res) => {
+  const island = ownerOf(req.params.ref);
+  if (!island) return res.status(404).json({ error: 'Booking not found' });
+  try {
+    res.json(await callIsland(island, 'CancelBooking', { reference: req.params.ref, email: req.body?.email }, 8000));
+  } catch (err) {
+    res.status(httpStatus(err)).json({ error: errorText(err) });
+  }
 });
 
 // ===========================================================================
@@ -343,13 +311,27 @@ async function storeEvents(events: IslandEvent[]): Promise<string[]> {
   })), { onConflict: 'event_id', ignoreDuplicates: true });
   if (error) throw new LinkError('INTERNAL', error.message);
 
-  // 2. An ONLINE ticket was checked in at an island: mirror the status so the
-  //    guest's app shows "checked in". Walk-in events are only stored.
-  const redeemed = events.filter((e) => e.type === 'REDEEMED' && JSON.parse(e.payload_json).source === 'ONLINE');
-  for (const e of redeemed) {
-    await sb.from('bookings').update({ status: 'REDEEMED', updated_at: new Date().toISOString() })
-      .eq('id', e.booking_id).eq('status', 'CONFIRMED');
+  // 2. Booking snapshots -> central's read-only copy (dashboard, reports, and
+  //    "my booking" while the owning island is offline). Only a newer snapshot
+  //    replaces an older one, so events arriving out of order cannot roll a
+  //    booking back to an earlier status.
+  const latest = new Map<string, Record<string, unknown>>();
+  for (const e of events.filter((x) => x.type === 'BOOKING_UPDATED')) {
+    const b = JSON.parse(e.payload_json);
+    const prev = latest.get(b.reference) as { updated_at: number } | undefined;
+    if (!prev || prev.updated_at <= b.updated_at) latest.set(b.reference, b);
   }
+  // One upsert per booking, all sent at once (Supabase is a network hop away).
+  const results = await Promise.all([...latest.values()].map((b) => sb.rpc('upsert_booking_copy', {
+    p: {
+      reference: b.reference, island_id: b.island_id, source: b.source, package_id: b.package_id,
+      package_name: b.package_name, day: b.day, nights: b.nights, guests: b.guests, guest_name: b.guest_name,
+      email: b.email ?? '', total_php: b.total_php, status: b.status,
+      created_at: new Date(Number(b.created_at)).toISOString(), updated_at_ms: b.updated_at,
+    },
+  })));
+  const failed = results.find((r) => r.error);
+  if (failed) throw new LinkError('INTERNAL', failed.error!.message);
 
   // 3. Acknowledge: the island marks these events as sent.
   return events.map((e) => e.event_id);

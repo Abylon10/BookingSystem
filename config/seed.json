@@ -1,88 +1,109 @@
 {
   "inventoryDays": 60,
-  "onlineShare": 0.3,
+  "holdMinutes": 10,
   "islands": [
     {
       "id": "biliran",
       "name": "Biliran Mainland",
-      "listings": [
+      "prefix": "BIL",
+      "services": [
+        { "id": "biliran-lagundi-room", "kind": "room", "name": "Lagundi Bay Resort room", "capacity": 10 },
+        { "id": "biliran-falls-trek", "kind": "tour", "name": "Tinago & Ulan-Ulan Falls trek", "capacity": 20 },
+        { "id": "biliran-van", "kind": "transfer", "name": "Van transfer", "capacity": 12 }
+      ],
+      "packages": [
         {
-          "id": "biliran-lagundi-bay",
-          "kind": "resort",
-          "name": "Lagundi Bay Resort",
-          "location": "Almeria, Biliran",
-          "description": "Beachfront cottages facing the Samar Sea, a short drive from Agta Beach.",
-          "pricePhp": 2800,
-          "capacity": 10,
-          "facilities": ["Wi-Fi", "Restaurant", "Parking", "Beach access"],
-          "image": "lagundi-bay"
+          "id": "biliran-falls-day",
+          "name": "Falls Day Trek",
+          "location": "Caibiran, Biliran",
+          "description": "Guided trek to Tinago Falls and Ulan-Ulan Falls with a dip at Mainit Hot Spring and van transfer.",
+          "pricePhp": 950, "pricing": "per_guest", "nights": 0, "maxGuests": 6,
+          "items": [
+            { "service": "biliran-falls-trek", "qty": 1, "perGuest": true },
+            { "service": "biliran-van", "qty": 1, "perGuest": true }
+          ]
         },
         {
-          "id": "biliran-falls-trek",
-          "kind": "tour",
-          "name": "Tinago & Ulan-Ulan Falls Trek",
-          "location": "Caibiran, Biliran",
-          "description": "Guided day trek to Tinago Falls and Ulan-Ulan Falls with a stop at Mainit Hot Spring.",
-          "pricePhp": 950,
-          "capacity": 20,
-          "facilities": ["Guide", "Lunch", "Van transfer"],
-          "image": "falls-trek"
+          "id": "biliran-lagundi-2d1n",
+          "name": "Lagundi Bay 2D1N + Falls",
+          "location": "Almeria and Caibiran, Biliran",
+          "description": "One night in a beachfront room at Lagundi Bay plus the falls trek and van transfer.",
+          "pricePhp": 4200, "pricing": "per_package", "nights": 1, "maxGuests": 2,
+          "items": [
+            { "service": "biliran-lagundi-room", "qty": 1, "perGuest": false },
+            { "service": "biliran-falls-trek", "qty": 1, "perGuest": true },
+            { "service": "biliran-van", "qty": 1, "perGuest": true }
+          ]
         }
       ]
     },
     {
       "id": "maripipi",
       "name": "Maripipi Island",
-      "listings": [
+      "prefix": "MRP",
+      "services": [
+        { "id": "maripipi-dagami-cottage", "kind": "room", "name": "Dagami Reef cottage", "capacity": 8 },
+        { "id": "maripipi-sambawan-hopping", "kind": "tour", "name": "Sambawan island hopping", "capacity": 24 },
+        { "id": "maripipi-boat", "kind": "boat", "name": "Boat transfer", "capacity": 16 }
+      ],
+      "packages": [
         {
-          "id": "maripipi-dagami-reef",
-          "kind": "resort",
-          "name": "Dagami Reef Cottages",
-          "location": "Maripipi, Biliran",
-          "description": "Native-style cottages at the foot of Maripipi volcano, near the Sambawan boat landing.",
-          "pricePhp": 2200,
-          "capacity": 8,
-          "facilities": ["Restaurant", "Snorkel gear", "Generator"],
-          "image": "dagami-reef"
+          "id": "maripipi-sambawan-day",
+          "name": "Sambawan Day Tour",
+          "location": "Sambawan Islets, Maripipi",
+          "description": "Boat to the Sambawan islets: hilltop viewpoint, coral-garden snorkel and white sand. Lunch included.",
+          "pricePhp": 1500, "pricing": "per_guest", "nights": 0, "maxGuests": 8,
+          "items": [
+            { "service": "maripipi-sambawan-hopping", "qty": 1, "perGuest": true },
+            { "service": "maripipi-boat", "qty": 1, "perGuest": true }
+          ]
         },
         {
-          "id": "maripipi-sambawan-hopping",
-          "kind": "tour",
-          "name": "Sambawan Island Hopping & Snorkel",
-          "location": "Sambawan Islets, Maripipi",
-          "description": "Boat tour to the Sambawan islets: hilltop viewpoint, coral garden snorkel and white sand.",
-          "pricePhp": 1500,
-          "capacity": 24,
-          "facilities": ["Boat", "Snorkel gear", "Lunch", "Life vests"],
-          "image": "sambawan"
+          "id": "maripipi-sambawan-overnight",
+          "name": "Sambawan Overnight",
+          "location": "Maripipi, Biliran",
+          "description": "A night in a native cottage below Maripipi volcano with island hopping and boat transfers.",
+          "pricePhp": 3500, "pricing": "per_package", "nights": 1, "maxGuests": 2,
+          "items": [
+            { "service": "maripipi-dagami-cottage", "qty": 1, "perGuest": false },
+            { "service": "maripipi-sambawan-hopping", "qty": 1, "perGuest": true },
+            { "service": "maripipi-boat", "qty": 1, "perGuest": true }
+          ]
         }
       ]
     },
     {
       "id": "higatangan",
       "name": "Higatangan Island",
-      "listings": [
+      "prefix": "HIG",
+      "services": [
+        { "id": "higatangan-inn-room", "kind": "room", "name": "Sandbar Inn room", "capacity": 8 },
+        { "id": "higatangan-rock-tour", "kind": "tour", "name": "Rock formations and sandbar tour", "capacity": 20 },
+        { "id": "higatangan-pumpboat", "kind": "boat", "name": "Pump boat from Naval", "capacity": 14 }
+      ],
+      "packages": [
         {
-          "id": "higatangan-sandbar-inn",
-          "kind": "resort",
-          "name": "Higatangan Sandbar Inn",
+          "id": "higatangan-sandbar-day",
+          "name": "Sandbar Day Trip",
           "location": "Higatangan, Naval, Biliran",
-          "description": "Quiet inn beside the shifting sandbar, a pump-boat ride from Naval port.",
-          "pricePhp": 1900,
-          "capacity": 8,
-          "facilities": ["Restaurant", "Kayaks", "Generator"],
-          "image": "sandbar-inn"
+          "description": "Pump boat from Naval, limestone rock formations, island viewpoint and a swim at the sandbar.",
+          "pricePhp": 800, "pricing": "per_guest", "nights": 0, "maxGuests": 8,
+          "items": [
+            { "service": "higatangan-rock-tour", "qty": 1, "perGuest": true },
+            { "service": "higatangan-pumpboat", "qty": 1, "perGuest": true }
+          ]
         },
         {
-          "id": "higatangan-rock-tour",
-          "kind": "tour",
-          "name": "Higatangan Rock Formations & Sandbar Tour",
+          "id": "higatangan-escape-2d1n",
+          "name": "Higatangan Escape 2D1N",
           "location": "Higatangan, Naval, Biliran",
-          "description": "Walk the limestone rock formations, climb to the island viewpoint and swim at the sandbar.",
-          "pricePhp": 800,
-          "capacity": 20,
-          "facilities": ["Guide", "Pump boat", "Snacks"],
-          "image": "rock-tour"
+          "description": "One night at the Sandbar Inn with the rock formations tour and pump-boat transfers.",
+          "pricePhp": 3200, "pricing": "per_package", "nights": 1, "maxGuests": 2,
+          "items": [
+            { "service": "higatangan-inn-room", "qty": 1, "perGuest": false },
+            { "service": "higatangan-rock-tour", "qty": 1, "perGuest": true },
+            { "service": "higatangan-pumpboat", "qty": 1, "perGuest": true }
+          ]
         }
       ]
     }

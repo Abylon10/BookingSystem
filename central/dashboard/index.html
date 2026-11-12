@@ -104,7 +104,7 @@
       <div class="kpi glass k1"><span class="kicon"><i data-icon="island"></i></span><div><small>Islands online</small><b id="k-islands">—</b><em id="k-islands-sub"></em></div></div>
       <div class="kpi glass k2"><span class="kicon"><i data-icon="ticket"></i></span><div><small>Bookings today</small><b id="k-bookings">—</b><em id="k-bookings-sub"></em></div></div>
       <div class="kpi glass k3"><span class="kicon"><i data-icon="check"></i></span><div><small>Checked in today</small><b id="k-checkins">—</b><em>Guests confirmed at the desk</em></div></div>
-      <div class="kpi glass k4"><span class="kicon"><i data-icon="seat"></i></span><div><small>Online seats left today</small><b id="k-seats">—</b><em>Across all listings</em></div></div>
+      <div class="kpi glass k4"><span class="kicon"><i data-icon="seat"></i></span><div><small>Packages bookable today</small><b id="k-seats">—</b><em id="k-seats-sub">Across all islands</em></div></div>
     </section>
 
     <!-- Rows 3-5: panels -->
@@ -135,7 +135,7 @@
         <div class="action-grid">
           <button class="action" id="a-refresh"><span><i data-icon="refresh"></i></span>Refresh now</button>
           <button class="action" id="a-speed"><span><i data-icon="gauge"></i></span>Speed test</button>
-          <a class="action" href="/api/listings" target="_blank"><span><i data-icon="search"></i></span>Live search</a>
+          <a class="action" href="/api/packages" target="_blank"><span><i data-icon="search"></i></span>Live search</a>
           <a class="action" href="/health" target="_blank"><span><i data-icon="heart"></i></span>Health</a>
           <a class="action" href="https://supabase.com/dashboard/project/xrpkpxxxancrogjddriw/editor" target="_blank" rel="noopener"><span><i data-icon="db"></i></span>Database</a>
           <a class="action" href="https://github.com/Abylon10/BookingSystem" target="_blank" rel="noopener"><span><i data-icon="code"></i></span>Source</a>
@@ -149,8 +149,27 @@
       </div>
 
       <div class="panel glass bars">
-        <div class="panel-head"><h3><i data-icon="bars"></i>Bookings by listing</h3><span class="chip">All time</span></div>
+        <div class="panel-head"><h3><i data-icon="bars"></i>Bookings by package</h3><span class="chip">All time</span></div>
         <div class="chart-box tall"><canvas id="c-listing"></canvas></div>
+      </div>
+
+      <div class="panel glass bench">
+        <div class="panel-head">
+          <h3><i data-icon="gauge"></i>Parallel report (worker threads)</h3>
+          <div class="bench-controls">
+            <select id="bench-records">
+              <option value="1000000">1 M records</option>
+              <option value="2000000" selected>2 M records</option>
+              <option value="8000000">8 M records</option>
+            </select>
+            <button id="bench-run" class="btn primary small">Run benchmark</button>
+          </div>
+        </div>
+        <p class="muted small bench-note" id="bench-note">Generates the yearly sales report with 1, 2, 4 and 8 worker threads and compares the time. Runs on the server hosting central.</p>
+        <div class="bench-body">
+          <div class="chart-box"><canvas id="c-bench"></canvas></div>
+          <table class="bench-table" id="bench-table"></table>
+        </div>
       </div>
     </section>
 

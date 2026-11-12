@@ -45,32 +45,53 @@ export interface NetworkConfig {
 // Types describing config/seed.json
 // ---------------------------------------------------------------------------
 
-// A resort or tour as written in seed.json. `capacity` is rooms per night for a
-// resort and seats per day for a tour; it is split into the two pools below.
-export interface SeedListing {
+// A bookable resource with a daily capacity: rooms per night, tour seats or
+// boat seats per day. One inventory per service, owned by its island (no split
+// between online and walk-in).
+export interface SeedService {
   id: string;
-  kind: 'resort' | 'tour';
+  kind: 'room' | 'tour' | 'boat' | 'transfer' | 'meal';
+  name: string;
+  capacity: number;
+}
+
+// One service used by a package: `qty` units per booking, or per guest when
+// perGuest is true. Rooms are taken for every night of the stay; other
+// services on the first day only.
+export interface SeedPackageItem {
+  service: string;
+  qty: number;
+  perGuest: boolean;
+}
+
+// What customers buy. pricing "per_guest" = price × guests; "per_package" =
+// one price for up to maxGuests. nights 0 = day trip.
+export interface SeedPackage {
+  id: string;
   name: string;
   location: string;
   description: string;
   pricePhp: number;
-  capacity: number;
-  facilities: string[];
-  image: string;
+  pricing: 'per_guest' | 'per_package';
+  nights: number;
+  maxGuests: number;
+  items: SeedPackageItem[];
 }
 
-// An island and the listings it owns.
+// An island: its services and packages. prefix starts its booking
+// references (e.g. MRP-7F3K2), so central knows which island owns a booking.
 export interface SeedIsland {
   id: string;
   name: string;
-  listings: SeedListing[];
+  prefix: string;
+  services: SeedService[];
+  packages: SeedPackage[];
 }
 
-// Root of seed.json: how many days of inventory to create, what fraction of
-// each listing's capacity is sold online, and the islands.
+// Root of seed.json.
 export interface Seed {
   inventoryDays: number;
-  onlineShare: number;
+  holdMinutes: number;
   islands: SeedIsland[];
 }
 
@@ -99,19 +120,10 @@ export function loadSeed(): Seed {
   return readJson<Seed>(join(ROOT, 'config', 'seed.json'));
 }
 
-// ---------------------------------------------------------------------------
-// Inventory split (the core idea that removes online-vs-walk-in races)
-// ---------------------------------------------------------------------------
-
-// Splits a listing's capacity into two pools, each with exactly one owner:
-//   online -> owned by central (sold through the app)
-//   walkin -> owned by the island (sold at the front desk)
-// Because no unit belongs to both pools, an online buyer and a walk-in guest can
-// never fight over the same room, even while the island is offline.
-// Example: capacity 10, share 0.3 -> { online: 3, walkin: 7 }.
-export function splitCapacity(capacity: number, onlineShare: number) {
-  const online = Math.round(capacity * onlineShare);
-  return { online, walkin: capacity - online };
+// Island that owns a booking reference, from its prefix (MRP-7F3K2 -> maripipi).
+export function islandOfReference(seed: Seed, reference: string): SeedIsland | undefined {
+  const prefix = String(reference).toUpperCase().split('-')[0];
+  return seed.islands.find((i) => i.prefix === prefix);
 }
 
 // ---------------------------------------------------------------------------

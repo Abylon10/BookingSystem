@@ -146,10 +146,23 @@ main { padding: 18px 24px 28px; min-width: 0; }
   grid-template-areas:
     "isl isl isl isl isl don don don don act act act"
     "arr arr arr qa  qa  qa  tr  tr  tr  act act act"
-    "bar bar bar bar bar bar bar bar bar act act act";
+    "bar bar bar bar bar bar bar bar bar act act act"
+    "ben ben ben ben ben ben ben ben ben ben ben ben";
 }
 .islands { grid-area: isl; } .donut { grid-area: don; } .activity { grid-area: act; }
 .arrivals { grid-area: arr; } .actions { grid-area: qa; } .trend { grid-area: tr; } .bars { grid-area: bar; }
+.bench { grid-area: ben; }
+.bench-controls { display: flex; gap: 8px; align-items: center; }
+.bench-controls select {
+  font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 8px;
+  background: rgba(11, 23, 32, .7); color: var(--text); border: 1px solid var(--line);
+}
+.bench-note { margin: -4px 0 10px; }
+.bench-body { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: center; }
+.bench-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bench-table th, .bench-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+.bench-table th:first-child, .bench-table td:first-child { text-align: left; }
+.bench-table th { color: var(--muted); font-weight: 500; }
 .panel { padding: 16px 18px; min-width: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
 .panel-head h3 { margin: 0; font-size: 15px; display: flex; gap: 8px; align-items: center; }
@@ -237,15 +250,16 @@ main { padding: 18px 24px 28px; min-width: 0; }
 @media (max-width: 1200px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
-    grid-template-areas: "isl isl" "don act" "arr qa" "tr act" "bar bar";
+    grid-template-areas: "isl isl" "don act" "arr qa" "tr act" "bar bar" "ben ben";
   }
+  .bench-body { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .hero-row, .kpis { grid-template-columns: 1fr 1fr; }
   .hero { grid-column: 1 / -1; }
-  .grid { grid-template-columns: 1fr; grid-template-areas: "isl" "don" "act" "arr" "qa" "tr" "bar"; }
+  .grid { grid-template-columns: 1fr; grid-template-areas: "isl" "don" "act" "arr" "qa" "tr" "bar" "ben"; }
   .admin small, .admin div { display: none; }
 }
 @media (max-width: 560px) {

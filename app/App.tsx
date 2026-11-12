@@ -1,134 +1,123 @@
 /**
  * app/App.tsx
  *
- * Placeholder home screen. It proves the phone can reach central over the
- * hotspot and shows the merged search result from all islands. The real
- * screens from DESIGN.md §10 (search, detail, booking, ticket, staff scanner)
- * will replace this.
+ * Guest app root. Simple state-based navigation (no router library):
+ *
+ *   Explore ──tap package──▶ PackageDetail ──reserve (HOLD)──▶ Payment
+ *      ▲                                                          │ pay
+ *      └──────────────── done ◀── Confirmation ◀──────────────────┘ (CONFIRMED)
+ *
+ *   My bookings (tab) ──tap──▶ Confirmation
+ *
+ * The bottom bar switches between the two tabs; it is hidden during booking.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { searchListings, type Listing, type SearchResult } from './src/api';
-import { colors, peso, radius, space } from './src/theme';
+import type { Booking, Package } from './src/api';
+import { saveBooking } from './src/storage';
+import { colors, space } from './src/theme';
+import { isoDay } from './src/ui';
+import { Explore } from './src/screens/Explore';
+import { PackageDetail } from './src/screens/PackageDetail';
+import { Payment } from './src/screens/Payment';
+import { Confirmation } from './src/screens/Confirmation';
+import { MyBookings } from './src/screens/MyBookings';
+
+// Which screen is showing, with the data it needs.
+type Route =
+  | { name: 'explore' }
+  | { name: 'mine' }
+  | { name: 'package'; pkg: Package }
+  | { name: 'pay'; booking: Booking }
+  | { name: 'confirmed'; booking: Booking; justPaid: boolean; from: 'explore' | 'mine' };
 
 export default function App() {
-  // Screen state: last search result, last error, and whether a request is running.
-  const [data, setData] = useState<SearchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [route, setRoute] = useState<Route>({ name: 'explore' });
+  // Search filters live here so they survive opening a package and coming back.
+  const [day, setDay] = useState(isoDay(new Date()));
+  const [guests, setGuests] = useState(2);
 
-  // Fetches listings from central. Used on first render and on pull-to-refresh.
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setData(await searchListings());
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Picks the screen for the current route.
+  let screen;
+  switch (route.name) {
+    case 'explore':
+      screen = (
+        <Explore
+          day={day}
+          guests={guests}
+          onChange={(d, g) => { setDay(d); setGuests(g); }}
+          onOpen={(pkg) => setRoute({ name: 'package', pkg })}
+        />
+      );
+      break;
+    case 'package':
+      screen = (
+        <PackageDetail
+          pkg={route.pkg}
+          onBack={() => setRoute({ name: 'explore' })}
+          // Save the reference as soon as it exists, so the guest can find it
+          // again even if the app closes during payment.
+          onHeld={(booking) => {
+            saveBooking({ reference: booking.reference, email: booking.email });
+            setRoute({ name: 'pay', booking });
+          }}
+        />
+      );
+      break;
+    case 'pay':
+      screen = (
+        <Payment
+          booking={route.booking}
+          onPaid={(booking) => setRoute({ name: 'confirmed', booking, justPaid: true, from: 'explore' })}
+          onCancel={() => setRoute({ name: 'explore' })}
+        />
+      );
+      break;
+    case 'confirmed':
+      screen = <Confirmation booking={route.booking} justPaid={route.justPaid} onDone={() => setRoute(route.from === 'mine' ? { name: 'mine' } : { name: 'explore' })} />;
+      break;
+    case 'mine':
+      screen = <MyBookings onOpen={(booking) => setRoute({ name: 'confirmed', booking, justPaid: false, from: 'mine' })} />;
+      break;
+  }
 
-  // Load once when the screen opens.
-  useEffect(() => {
-    load();
-  }, [load]);
+  // The tab bar only shows on the two top-level screens.
+  const tab = route.name === 'explore' || route.name === 'mine' ? route.name : null;
 
   return (
-    <View style={styles.screen}>
+    <View style={st.root}>
       <StatusBar style="light" />
-
-      {/* Header: title plus one chip per island showing online/offline and response time */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Explore Biliran</Text>
-        <Text style={styles.subtitle}>Resorts & tours across 3 islands</Text>
-        {data && (
-          <View style={styles.chips}>
-            {data.islands.map((i) => (
-              <Text key={i.id} style={[styles.chip, i.status === 'offline' && styles.chipOffline]}>
-                {i.id} · {i.status === 'online' ? `${i.ms} ms` : 'offline'}
-              </Text>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Body: spinner on first load, error if central is unreachable, otherwise the list */}
-      {loading && !data ? (
-        <ActivityIndicator style={{ marginTop: space.xl }} color={colors.primary} />
-      ) : error ? (
-        <Text style={styles.error}>Can't reach central: {error}</Text>
-      ) : (
-        <FlatList
-          data={data?.listings ?? []}
-          keyExtractor={(l) => l.id}
-          contentContainerStyle={{ padding: space.md, gap: space.md }}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-          renderItem={({ item }) => <ListingCard item={item} />}
-        />
+      {screen}
+      {tab && (
+        <View style={st.tabs}>
+          <TabButton label="Explore" active={tab === 'explore'} onPress={() => setRoute({ name: 'explore' })} />
+          <TabButton label="My bookings" active={tab === 'mine'} onPress={() => setRoute({ name: 'mine' })} />
+        </View>
       )}
     </View>
   );
 }
 
-// One resort/tour card: type, name, location, price and online units left.
-function ListingCard({ item }: { item: Listing }) {
+// One button in the bottom tab bar.
+function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.kind}>{item.kind === 'resort' ? 'Resort' : 'Tour'}</Text>
-      <Text style={styles.name}>{item.name}</Text>
-      <Text style={styles.location}>{item.location}</Text>
-      <View style={styles.row}>
-        <Text style={styles.price}>
-          {peso(item.price_php)}
-          <Text style={styles.unit}>{item.kind === 'resort' ? ' / night' : ' / person'}</Text>
-        </Text>
-        <Text style={styles.left}>
-          {item.online_available === null ? '' : `${item.online_available} left online`}
-        </Text>
-      </View>
-    </View>
+    <Pressable onPress={onPress} style={st.tab}>
+      <Text style={[st.tabText, active && st.tabActive]}>{label}</Text>
+      {active && <View style={st.tabDot} />}
+    </Pressable>
   );
 }
 
-// Styles, built from the theme tokens in src/theme.ts.
-const styles = StyleSheet.create({
-  // Layout
-  screen: { flex: 1, backgroundColor: colors.sand },
-  header: {
-    backgroundColor: colors.primary,
-    paddingTop: 56,
-    paddingHorizontal: space.md,
-    paddingBottom: space.md,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
+// Styles for the root and tab bar.
+const st = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.sand },
+  tabs: {
+    position: 'absolute', left: space.md, right: space.md, bottom: space.lg,
+    flexDirection: 'row', backgroundColor: colors.ink, borderRadius: 999, paddingVertical: 10,
   },
-  title: { color: '#fff', fontSize: 24, fontWeight: '700' },
-  subtitle: { color: '#D6E6EA', marginTop: 2 },
-
-  // Island status chips
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
-  chip: {
-    backgroundColor: colors.secondary,
-    color: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-    fontSize: 12,
-  },
-  chipOffline: { backgroundColor: colors.danger },
-  error: { color: colors.danger, margin: space.md },
-
-  // Listing card
-  card: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.md },
-  kind: { color: colors.secondary, fontWeight: '600', fontSize: 12, textTransform: 'uppercase' },
-  name: { color: colors.ink, fontSize: 17, fontWeight: '700', marginTop: 2 },
-  location: { color: colors.muted, marginTop: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: space.sm },
-  price: { color: colors.accent, fontSize: 18, fontWeight: '700' },
-  unit: { color: colors.muted, fontSize: 13, fontWeight: '400' },
-  left: { color: colors.muted, fontSize: 12 },
+  tab: { flex: 1, alignItems: 'center', gap: 4 },
+  tabText: { color: '#9FB3BE', fontWeight: '600' },
+  tabActive: { color: '#fff' },
+  tabDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.accent },
 });

@@ -13,6 +13,7 @@ import type express from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { addDays, today } from '../shared/config.ts';
+import { benchmark } from './reports.ts';
 
 // What the admin module needs from server.ts.
 interface Deps {
@@ -54,34 +55,25 @@ function sameText(a: string, b: string): boolean {
 // Summary helpers
 // ---------------------------------------------------------------------------
 
-// A booking row from Supabase (online bookings).
-interface OnlineBooking {
-  id: string;
-  listing_id: string;
+// A booking copy from Supabase (fed by the islands' outbox events).
+interface Copy {
+  reference: string;
+  island_id: string;
+  source: 'ONLINE' | 'WALKIN';
+  package_id: string;
+  package_name: string;
   day: string;
-  qty: number;
-  nights: number;
+  guests: number;
   guest_name: string;
   total_php: number;
-  code: string;
   status: string;
-  created_at: string;
-}
-
-// An island event row from Supabase (synced from an island's outbox).
-interface EventRow {
-  event_id: string;
-  island_id: string;
-  type: string;
-  booking_id: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload: any;
   created_at: string;
   received_at: string;
 }
 
-const islandOfListing = (listingId: string) => listingId.split('-')[0];
 const dayOf = (iso: string) => iso.slice(0, 10);
+// Bookings that count as sold (not undone holds or cancellations).
+const SOLD = new Set(['HELD', 'CONFIRMED', 'CHECKED_IN']);
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -105,100 +97,97 @@ export function mountAdmin(app: express.Express, { sb, secret, search }: Deps): 
     next();
   };
 
+  // Parallel report benchmark (worker threads 1/2/4/8) on this server.
+  // One at a time: a second request waits for the running one.
+  let running: Promise<unknown> | null = null;
+  app.get('/api/admin/report-bench', requireAdmin, async (req, res) => {
+    const records = Math.min(Math.max(Number(req.query.records) || 2_000_000, 100_000), 20_000_000);
+    try {
+      while (running) await running;
+      running = benchmark(records, [1, 2, 4, 8], 3);
+      res.json(await running);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    } finally {
+      running = null;
+    }
+  });
+
   // Everything the dashboard shows, computed from the live island fan-out
   // plus central's Supabase copies of online bookings and island events.
   app.get('/api/admin/summary', requireAdmin, async (_req, res) => {
     const day = today();
 
-    // 1. Live island status and listings (same parallel fan-out as search).
+    // 1. Live island status and today's packages (same parallel fan-out as search).
     const live = await search('parallel', day);
 
-    // 2. Central's copies: online bookings and the latest island events.
-    let bookings: OnlineBooking[] = [];
-    let events: EventRow[] = [];
+    // 2. Central's copies of all bookings (online and walk-in) from every island.
+    let copies: Copy[] = [];
     if (sb) {
-      const [b, e] = await Promise.all([
-        sb.from('bookings').select('*').order('created_at', { ascending: false }).limit(1000),
-        sb.from('island_events').select('*').order('received_at', { ascending: false }).limit(1000),
-      ]);
-      bookings = (b.data ?? []) as OnlineBooking[];
-      events = (e.data ?? []) as EventRow[];
+      const { data } = await sb.from('booking_copies').select('*').order('received_at', { ascending: false }).limit(2000);
+      copies = (data ?? []) as Copy[];
     }
-    const walkins = events.filter((e) => e.type === 'WALKIN_BOOKED');
-    const checkins = events.filter((e) => e.type === 'REDEEMED');
+    const sold = copies.filter((c) => SOLD.has(c.status));
 
     // 3. KPI cards.
-    const onlineToday = bookings.filter((b) => dayOf(b.created_at) === day && b.status !== 'CANCELLED').length;
-    const walkinToday = walkins.filter((e) => dayOf(e.created_at) === day).length;
-    const onlineSeats = live.listings.reduce((n: number, l: { online_available: number | null }) => n + (l.online_available ?? 0), 0);
+    const madeToday = sold.filter((c) => dayOf(c.created_at) === day);
     const kpis = {
       islandsOnline: live.islands.filter((i: { status: string }) => i.status === 'online').length,
       islandsTotal: live.islands.length,
-      bookingsToday: onlineToday + walkinToday,
-      onlineToday,
-      walkinToday,
-      checkedInToday: checkins.filter((e) => dayOf(e.created_at) === day).length,
-      onlineSeatsToday: onlineSeats,
+      bookingsToday: madeToday.length,
+      onlineToday: madeToday.filter((c) => c.source === 'ONLINE').length,
+      walkinToday: madeToday.filter((c) => c.source === 'WALKIN').length,
+      checkedInToday: copies.filter((c) => c.status === 'CHECKED_IN' && c.day === day).length,
+      packagesAvailable: live.packages.filter((p: { available: boolean }) => p.available).length,
+      packagesTotal: live.packages.length,
+      revenuePhp: sold.reduce((n, c) => n + c.total_php, 0),
     };
 
-    // 4. Bookings per island and per listing (all time, online + walk-in).
-    const names = new Map<string, string>(live.listings.map((l: { id: string; name: string }) => [l.id, l.name]));
+    // 4. Bookings per island (online vs walk-in) and per package.
     const byIsland: Record<string, { online: number; walkin: number }> = {};
-    const byListing: Record<string, number> = {};
-    const count = (listing: string, kind: 'online' | 'walkin') => {
-      const island = islandOfListing(listing);
-      byIsland[island] ??= { online: 0, walkin: 0 };
-      byIsland[island][kind]++;
-      byListing[listing] = (byListing[listing] ?? 0) + 1;
-    };
-    for (const b of bookings) if (b.status !== 'CANCELLED') count(b.listing_id, 'online');
-    for (const e of walkins) if (e.payload?.listing_id) count(e.payload.listing_id, 'walkin');
+    const byPackage: Record<string, { name: string; count: number }> = {};
+    for (const c of sold) {
+      byIsland[c.island_id] ??= { online: 0, walkin: 0 };
+      byIsland[c.island_id][c.source === 'ONLINE' ? 'online' : 'walkin']++;
+      byPackage[c.package_id] ??= { name: c.package_name, count: 0 };
+      byPackage[c.package_id].count++;
+    }
 
-    // 5. Last 7 days, online vs walk-in.
+    // 5. Last 7 days, online vs walk-in (by booking date).
     const daily = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(day, i - 6);
-      return {
-        day: d,
-        online: bookings.filter((b) => dayOf(b.created_at) === d).length,
-        walkin: walkins.filter((e) => dayOf(e.created_at) === d).length,
-      };
+      const that = sold.filter((c) => dayOf(c.created_at) === d);
+      return { day: d, online: that.filter((c) => c.source === 'ONLINE').length, walkin: that.filter((c) => c.source === 'WALKIN').length };
     });
 
-    // 6. Activity feed: newest island events and online bookings, merged.
-    const activity = [
-      ...events.slice(0, 30).map((e) => ({
-        at: e.received_at,
-        kind: e.type,
-        island: e.island_id,
-        text: e.type === 'WALKIN_BOOKED'
-          ? `Walk-in ${e.payload?.code ?? ''} · ${names.get(e.payload?.listing_id) ?? e.payload?.listing_id ?? ''}`
-          : e.type === 'REDEEMED' ? `Guest checked in (${e.payload?.source === 'ONLINE' ? 'online booking' : 'walk-in'})` : e.type,
-      })),
-      ...bookings.slice(0, 30).map((b) => ({
-        at: b.created_at,
-        kind: b.status === 'CANCELLED' ? 'CANCELLED' : 'ONLINE_BOOKED',
-        island: islandOfListing(b.listing_id),
-        text: `${b.status === 'CANCELLED' ? 'Cancelled' : 'Online booking'} ${b.code} · ${names.get(b.listing_id) ?? b.listing_id}`,
-      })),
-    ].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 12);
+    // 6. Activity feed: newest changes first.
+    const kindOf = (c: Copy) => c.status === 'CHECKED_IN' ? 'REDEEMED'
+      : ['CANCELLED', 'RELEASED', 'EXPIRED'].includes(c.status) ? 'CANCELLED'
+        : c.source === 'ONLINE' ? 'ONLINE_BOOKED' : 'WALKIN_BOOKED';
+    const label: Record<string, string> = { REDEEMED: 'Checked in', CANCELLED: 'Cancelled', ONLINE_BOOKED: 'Online booking', WALKIN_BOOKED: 'Walk-in' };
+    const activity = copies.slice(0, 12).map((c) => ({
+      at: c.received_at,
+      kind: kindOf(c),
+      island: c.island_id,
+      text: `${c.status === 'HELD' ? 'Online hold' : c.status === 'EXPIRED' ? 'Hold expired' : label[kindOf(c)]} ${c.reference} · ${c.package_name}`,
+    }));
 
-    // 7. Upcoming arrivals: confirmed online bookings from today on.
-    const arrivals = bookings
-      .filter((b) => b.day >= day && b.status === 'CONFIRMED')
+    // 7. Upcoming arrivals: confirmed bookings from today on.
+    const arrivals = copies
+      .filter((c) => c.status === 'CONFIRMED' && c.day >= day)
       .sort((a, b) => (a.day < b.day ? -1 : 1))
       .slice(0, 6)
-      .map((b) => ({ day: b.day, guest: b.guest_name, listing: names.get(b.listing_id) ?? b.listing_id, island: islandOfListing(b.listing_id), qty: b.qty, code: b.code }));
+      .map((c) => ({ day: c.day, guest: c.guest_name, listing: c.package_name, island: c.island_id, qty: c.guests, code: c.reference }));
 
     res.json({
       generatedAt: new Date().toISOString(),
       supabase: Boolean(sb),
-      lastSyncAt: events[0]?.received_at ?? null,
+      lastSyncAt: copies[0]?.received_at ?? null,
       islands: live.islands,
       fanoutMs: live.fanoutMs,
       kpis,
       byIsland,
-      byListing: Object.entries(byListing).map(([id, n]) => ({ id, name: names.get(id) ?? id, count: n }))
-        .sort((a, b) => b.count - a.count),
+      byListing: Object.entries(byPackage).map(([id, v]) => ({ id, name: v.name, count: v.count })).sort((a, b) => b.count - a.count),
       daily,
       activity,
       arrivals,

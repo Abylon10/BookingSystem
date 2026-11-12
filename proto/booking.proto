@@ -3,7 +3,14 @@ syntax = "proto3";
 package biliran.booking.v1;
 
 // Served by every island node. Central is the client.
+//
+// v2: all island methods (GetCatalog, SearchAvailability, HoldBooking,
+// ConfirmBooking, ReleaseHold, CancelBooking, GetBooking, Ping) are carried by
+// Invoke as method name + JSON body. The cloud island link and HTTPS polling
+// carry the same method names and JSON bodies, so all three transports share
+// one set of handlers. The older typed RPCs below are kept for reference only.
 service IslandService {
+  rpc Invoke(Invocation) returns (Invocation);
   // Search fan-out: central calls all islands in parallel.
   rpc GetCatalog(CatalogRequest) returns (CatalogReply);
   rpc GetAvailability(AvailabilityRequest) returns (AvailabilityReply);
@@ -19,6 +26,12 @@ service IslandService {
 service CentralService {
   // Island outbox -> central. Events are deduplicated by event_id.
   rpc PushEvents(EventBatch) returns (EventAck);
+}
+
+// Generic call: method name and its JSON request (or JSON reply).
+message Invocation {
+  string method = 1;
+  string json = 2;
 }
 
 message Listing {

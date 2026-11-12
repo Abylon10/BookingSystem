@@ -1,146 +1,272 @@
 /**
  * island/console/app.js
  *
- * Front desk console, served by the island node and opened in the laptop's
- * browser. Talks only to its own island over HTTP (same origin), so it keeps
+ * Front desk console (v2): sign in, then Arrivals / Walk-in / Availability /
+ * Bookings / Staff. Talks only to its own island over HTTP, so it keeps
  * working when the island is cut off from central.
  */
 
 // ---------------------------------------------------------------------------
-// Small helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
-// Shorthand for document.getElementById.
 const $ = (id) => document.getElementById(id);
-
-// Formats a number as Philippine pesos, e.g. 2800 -> "₱2,800".
 const peso = (n) => `₱${Number(n).toLocaleString('en-PH')}`;
-
-// Escapes text before putting it into innerHTML, so a guest name like
-// "<script>" is shown as text instead of running as code.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const fmtDay = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
 
-// Calls the island API. GET when no body is given, POST with JSON otherwise.
-// Throws with the server's error message when the response is not 2xx.
+let token = null;
+try { token = localStorage.getItem('desk-token'); } catch { /* storage blocked */ }
+let me = null;
+let packages = [];
+
+// Calls the island API with the session token; 401 shows the sign-in screen.
 async function api(path, body) {
-  const res = await fetch(path, body
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : undefined);
+  const res = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const data = await res.json();
+  if (res.status === 401 && !path.startsWith('/api/login')) { showAuth(); throw new Error('Signed out'); }
   if (!res.ok) throw new Error(data.error ?? res.statusText);
   return data;
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard refresh (runs on load and every 3 seconds)
+// Sign-in and first-run setup
 // ---------------------------------------------------------------------------
 
-async function refresh() {
-  // Header, partition switch and sync status.
-  const state = await api('/api/state');
-  $('island-name').textContent = state.island.name;
-  $('partition').checked = state.partitioned;
-  // Link status: "lan" = central calls us directly on the hotspot; otherwise
-  // we keep an outgoing link to central in the cloud ("connected"/"connecting").
-  const link = { lan: 'LAN', connected: 'cloud link up', polling: 'cloud link up, HTTPS polling', connecting: 'cloud link reconnecting…' }[state.centralLink] ?? '';
-  $('sync-status').textContent = state.partitioned
-    ? `Offline from central — ${state.outboxPending} event(s) waiting to sync`
-    : `Connected (${link}) — ${state.outboxPending} event(s) waiting to sync`;
+let setupMode = false;
+async function showAuth() {
+  const s = await (await fetch('/api/session')).json();
+  setupMode = s.needsSetup;
+  $('auth-island').textContent = s.island.name;
+  $('auth-hint').textContent = setupMode ? 'First run: create the node admin account for this island' : 'Front desk sign in';
+  $('auth-btn').textContent = setupMode ? 'Create node admin' : 'Sign in';
+  $('auth').classList.remove('hidden');
+}
 
-  // Walk-in units left today per listing.
-  $('listings').innerHTML = state.listings.map((l) =>
-    `<li><span>${esc(l.name)} <span class="price">${peso(l.price_php)}</span></span>
-         <strong>${l.walkin_available ?? 0} left</strong></li>`).join('');
+$('auth-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('auth-error').textContent = '';
+  const res = await fetch(setupMode ? '/api/setup' : '/api/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: $('auth-user').value, password: $('auth-pass').value }),
+  });
+  const data = await res.json();
+  if (!res.ok) { $('auth-error').textContent = data.error; return; }
+  saveSession(data);
+  $('auth-pass').value = '';
+  $('auth').classList.add('hidden');
+  start();
+});
 
-  // Fill the listing dropdown of the walk-in form once (not on every refresh,
-  // otherwise the staff member's selection would keep resetting).
-  if (!$('w-listing').options.length) {
-    $('w-listing').innerHTML = state.listings.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
-  }
+function saveSession(s) {
+  token = s.token;
+  me = { user: s.user, role: s.role };
+  try { localStorage.setItem('desk-token', token); localStorage.setItem('desk-me', JSON.stringify(me)); } catch { /* ignore */ }
+}
+$('logout').addEventListener('click', () => {
+  token = null;
+  try { localStorage.removeItem('desk-token'); } catch { /* ignore */ }
+  showAuth();
+});
 
-  // Recent bookings table.
-  const bookings = await api('/api/bookings');
-  $('bookings').innerHTML = bookings.map((b) => `<tr>
-      <td>${esc(b.code)}</td><td>${esc(b.source)}</td><td>${esc(b.listing_id)}</td><td>${esc(b.day)}</td>
-      <td>${esc(b.guest_name)}</td><td><span class="badge ${esc(b.status)}">${esc(b.status)}</span></td></tr>`).join('');
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+
+for (const b of document.querySelectorAll('#tabs button')) {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== b.dataset.tab));
+    refreshTab(b.dataset.tab);
+  });
+}
+const currentTab = () => document.querySelector('#tabs button.active').dataset.tab;
+function refreshTab(tab) {
+  ({ arrivals: loadArrivals, walkin: updateTotal, availability: loadAvailability, bookings: loadBookings, staff: loadStaff }[tab] ?? (() => {}))();
 }
 
 // ---------------------------------------------------------------------------
-// "Disconnect from Central" switch
+// Header: link status and partition switch (refreshed every 3 s)
 // ---------------------------------------------------------------------------
 
-$('partition').addEventListener('change', async (e) => {
-  await api('/api/partition', { on: e.target.checked });
-  refresh();
-});
-
-// ---------------------------------------------------------------------------
-// Check-in: verify the code/QR, show the guest, then confirm after the ID check
-// ---------------------------------------------------------------------------
-
-$('verify-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const out = $('verify-result');
-  try {
-    // A pasted QR payload always contains a "." (body.signature); a typed
-    // BK-XXXX-YYYY code never does. Send whichever one this is.
-    const input = $('code').value.trim();
-    const v = await api('/api/verify', input.includes('.') ? { qr: input } : { code: input });
-
-    // Not usable (invalid, unknown, cancelled, already checked in): show why.
-    if (v.result !== 'VALID') {
-      out.innerHTML = `<div class="result bad"><strong>${esc(v.result)}</strong> ${esc(v.reason ?? '')}</div>`;
-      return;
-    }
-
-    // Valid: show name + ID hint so staff can compare with the physical ID.
-    const b = v.booking;
-    out.innerHTML = `<div class="result ok">
-        <strong>${esc(b.guest_name)}</strong> — ${esc(b.id_type)} ending <strong>${esc(b.id_last4)}</strong><br>
-        ${esc(b.listing_id)} · ${esc(b.day)} · qty ${b.qty} · ${esc(b.source)}<br><br>
-        <button class="confirm" id="confirm-btn">ID matches — Check in</button></div>`;
-
-    // Confirm button: redeem the booking (the server guarantees "once only").
-    $('confirm-btn').onclick = async () => {
-      const r = await api('/api/redeem', { bookingId: b.id });
-      out.innerHTML = `<div class="result ${r.ok ? 'ok' : 'bad'}"><strong>${esc(r.result)}</strong></div>`;
-      refresh();
-    };
-  } catch (err) {
-    out.innerHTML = `<div class="result bad">${esc(err.message)}</div>`;
+async function loadHeader() {
+  const s = await api(`/api/state?day=${$('w-day').value || todayStr()}&guests=${$('w-guests').value || 1}`);
+  $('island-name').textContent = s.island.name;
+  document.title = `${s.island.name} · Front desk`;
+  $('partition').checked = s.partitioned;
+  const link = { lan: 'LAN', connected: 'cloud link', polling: 'cloud, HTTPS polling', connecting: 'reconnecting…' }[s.centralLink] ?? '';
+  $('sync-status').textContent = s.partitioned
+    ? `Offline from central — ${s.outboxPending} change(s) waiting to sync`
+    : `Connected (${link}) — ${s.outboxPending} change(s) waiting to sync`;
+  packages = s.packages;
+  if (!$('w-package').options.length) {
+    $('w-package').innerHTML = s.packages.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    $('b-service').innerHTML = s.inventory.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
   }
+  updateTotal();
+}
+$('partition').addEventListener('change', async (e) => { await api('/api/partition', { on: e.target.checked }); loadHeader(); });
+
+// ---------------------------------------------------------------------------
+// Arrivals: search + confirm arrival after the ID check
+// ---------------------------------------------------------------------------
+
+function bookingItem(b) {
+  const canCheckIn = b.status === 'CONFIRMED';
+  return `<div class="item">
+    <div>
+      <b>${esc(b.guest_name)}</b> · <span class="muted">${esc(b.reference)}</span>
+      <span class="badge ${esc(b.source)}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span>
+      <span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span>
+      <div class="meta">${esc(b.package_name)} · ${fmtDay(b.day)} · ${b.guests} guest(s) · ${peso(b.total_php)}</div>
+      ${canCheckIn ? `<div class="idcheck">Check ID: <b>${esc(b.guest_name)}</b> · ${esc(b.id_type)} ending <b>${esc(b.id_last4)}</b></div>` : ''}
+    </div>
+    <div>${canCheckIn ? `<button class="ok" data-checkin="${esc(b.reference)}">ID matches — Check in</button>` : ''}</div>
+  </div>`;
+}
+async function loadArrivals(q) {
+  const query = q ?? $('find-q').value.trim();
+  const list = query ? await api(`/api/bookings?q=${encodeURIComponent(query)}`) : await api(`/api/bookings?day=${$('arr-day').value}`);
+  $('arr-list').innerHTML = list.map(bookingItem).join('')
+    || `<p class="muted">${query ? 'No booking matches that reference or name on this island.' : `No arrivals on ${fmtDay($('arr-day').value)}.`}</p>`;
+}
+$('find-form').addEventListener('submit', (e) => { e.preventDefault(); loadArrivals(); });
+$('arr-day').addEventListener('change', () => { $('find-q').value = ''; loadArrivals(''); });
+$('arr-list').addEventListener('click', async (e) => {
+  const ref = e.target.dataset?.checkin;
+  if (!ref) return;
+  try { await api(`/api/bookings/${ref}/checkin`, {}); } catch (err) { alert(err.message); }
+  loadArrivals();
 });
 
 // ---------------------------------------------------------------------------
-// Walk-in booking form
+// Walk-in booking
 // ---------------------------------------------------------------------------
+
+function updateTotal() {
+  const p = packages.find((x) => x.id === $('w-package').value);
+  if (!p) return;
+  const g = Number($('w-guests').value) || 1;
+  $('w-guests').max = p.max_guests;
+  const total = p.pricing === 'per_guest' ? p.price_php * g : p.price_php;
+  $('w-total').textContent = `${peso(total)} · ${p.available ? `${p.spots} left` : 'sold out'} · up to ${p.max_guests} guests`;
+}
+['w-package', 'w-guests', 'w-day'].forEach((id) => $(id).addEventListener('change', () => loadHeader()));
 
 $('walkin-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const out = $('walkin-result');
   try {
-    // A new random requestId per submit; the server uses it to ignore repeats.
-    const { booking } = await api('/api/walkin', {
-      requestId: crypto.randomUUID(),
-      listingId: $('w-listing').value,
-      day: $('w-day').value,
-      nights: Number($('w-nights').value),
-      qty: Number($('w-qty').value),
-      guestName: $('w-name').value,
-      idType: $('w-idtype').value,
-      idLast4: $('w-last4').value,
+    const b = await api('/api/walkin', {
+      requestId: crypto.randomUUID(), packageId: $('w-package').value, day: $('w-day').value,
+      guests: Number($('w-guests').value), guestName: $('w-name').value, phone: $('w-phone').value,
+      email: $('w-email').value, idType: $('w-idtype').value, idLast4: $('w-last4').value,
     });
-    out.innerHTML = `<div class="result ok">Booked <strong>${esc(booking.code)}</strong> — ${peso(booking.total_php)}</div>`;
-    refresh();
+    out.innerHTML = `<div class="result ok">Booked <b>${esc(b.reference)}</b> for ${esc(b.guest_name)} — ${peso(b.total_php)} collected.</div>`;
+    $('walkin-form').reset();
+    $('w-day').value = todayStr();
+    loadHeader();
   } catch (err) {
     out.innerHTML = `<div class="result bad">${esc(err.message)}</div>`;
   }
 });
 
 // ---------------------------------------------------------------------------
-// Start: default the date picker to today, load data, keep it fresh
+// Availability + mark unavailable
 // ---------------------------------------------------------------------------
 
-$('w-day').value = new Date().toISOString().slice(0, 10);
-refresh();
-setInterval(refresh, 3000);
+async function loadAvailability() {
+  const s = await api(`/api/state?day=${$('av-day').value}&guests=${$('av-guests').value || 1}`);
+  $('av-packages').innerHTML = s.packages.map((p) => `<div class="item"><div><b>${esc(p.name)}</b>
+      <div class="meta">${p.nights ? `${p.nights} night(s)` : 'Day trip'} · up to ${p.max_guests} · ${peso(p.total_php)} for ${s.guests}</div></div>
+      <div>${p.available ? `<span class="badge">${p.spots} left</span>` : '<span class="badge sold">Sold out</span>'}</div></div>`).join('');
+  $('av-services').innerHTML = s.inventory.map((i) => `<tr><td>${esc(i.name)}</td><td>${i.capacity ?? '—'}</td><td>${i.booked ?? '—'}</td>
+      <td>${i.blocked ?? '—'}</td><td><b>${i.free ?? '—'}</b></td>
+      <td>${i.blocked ? `<button class="link" data-unblock="${esc(i.id)}">Make available</button>` : ''}</td></tr>`).join('');
+}
+['av-day', 'av-guests'].forEach((id) => $(id).addEventListener('change', loadAvailability));
+$('av-services').addEventListener('click', async (e) => {
+  const id = e.target.dataset?.unblock;
+  if (!id) return;
+  await api('/api/blocks/release', { serviceId: id, day: $('av-day').value, units: 0 });
+  loadAvailability();
+});
+$('block-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const out = $('block-result');
+  try {
+    await api('/api/blocks', { serviceId: $('b-service').value, day: $('b-day').value, days: Number($('b-days').value), units: Number($('b-units').value), reason: $('b-reason').value });
+    out.innerHTML = '<div class="result ok">Marked unavailable. Online and walk-in sales now skip those units.</div>';
+    $('av-day').value = $('b-day').value;
+    loadAvailability();
+  } catch (err) {
+    out.innerHTML = `<div class="result bad">${esc(err.message)}</div>`;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Bookings list
+// ---------------------------------------------------------------------------
+
+async function loadBookings() {
+  const list = await api('/api/bookings');
+  $('bk-list').innerHTML = list.map((b) => `<tr><td><b>${esc(b.reference)}</b></td>
+    <td><span class="badge ${esc(b.source)}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span></td>
+    <td>${esc(b.package_name)}</td><td>${esc(b.day)}</td><td>${b.guests}</td><td>${esc(b.guest_name)}</td><td>${peso(b.total_php)}</td>
+    <td><span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
+    <td>${['CONFIRMED', 'HELD'].includes(b.status) ? `<button class="danger" data-cancel="${esc(b.reference)}">Cancel</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="9" class="muted">No bookings yet</td></tr>';
+}
+$('bk-list').addEventListener('click', async (e) => {
+  const ref = e.target.dataset?.cancel;
+  if (!ref || !confirm(`Cancel ${ref}? Its units go back on sale.`)) return;
+  try { await api(`/api/bookings/${ref}/cancel`, {}); } catch (err) { alert(err.message); }
+  loadBookings();
+});
+
+// ---------------------------------------------------------------------------
+// Staff (node admin)
+// ---------------------------------------------------------------------------
+
+async function loadStaff() {
+  const list = await api('/api/staff');
+  $('staff-list').innerHTML = list.map((u) => `<tr><td>${esc(u.username)}</td><td>${u.role === 'node_admin' ? 'Node admin' : 'Receptionist'}</td>
+    <td>${u.active ? 'Active' : 'Disabled'}</td>
+    <td>${u.role === 'receptionist' ? `<button class="link" data-user="${esc(u.username)}" data-active="${u.active ? 0 : 1}">${u.active ? 'Disable' : 'Enable'}</button>` : ''}</td></tr>`).join('');
+}
+$('staff-list').addEventListener('click', async (e) => {
+  const u = e.target.dataset?.user;
+  if (!u) return;
+  await api(`/api/staff/${u}/active`, { active: e.target.dataset.active === '1' });
+  loadStaff();
+});
+$('staff-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await api('/api/staff', { username: $('s-user').value, password: $('s-pass').value });
+    $('staff-result').textContent = `Added ${$('s-user').value}.`;
+    $('staff-form').reset();
+    loadStaff();
+  } catch (err) {
+    $('staff-result').textContent = err.message;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+function start() {
+  try { me = JSON.parse(localStorage.getItem('desk-me') || 'null'); } catch { /* ignore */ }
+  $('who').textContent = me ? `${me.user} · ${me.role === 'node_admin' ? 'Node admin' : 'Receptionist'}` : '';
+  $('tab-staff').classList.toggle('hidden', me?.role !== 'node_admin');
+  loadHeader().then(() => refreshTab(currentTab())).catch(() => {});
+}
+for (const id of ['arr-day', 'w-day', 'av-day', 'b-day']) $(id).value = todayStr();
+if (token) start(); else showAuth();
+setInterval(() => { if (token && !document.hidden) loadHeader().catch(() => {}); }, 3000);

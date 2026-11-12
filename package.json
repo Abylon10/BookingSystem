@@ -8,14 +8,14 @@
   },
   "scripts": {
     "central": "node --env-file-if-exists=.env central/server.ts",
-    "central:seed": "node --env-file-if-exists=.env central/seed.ts",
     "island": "node --env-file-if-exists=.env island/server.ts",
     "island:biliran": "node --env-file-if-exists=.env island/server.ts biliran",
     "island:maripipi": "node --env-file-if-exists=.env island/server.ts maripipi",
     "island:higatangan": "node --env-file-if-exists=.env island/server.ts higatangan",
     "test:race": "node --env-file-if-exists=.env loadtest/race.ts",
     "test:search": "node --env-file-if-exists=.env loadtest/search.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:reports": "node --env-file-if-exists=.env loadtest/reports.ts"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.0",
