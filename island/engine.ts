@@ -233,6 +233,31 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     recent: (limit = 100) => (db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT ?').all(limit) as unknown as BookingRow[]).map(snapshot),
     arrivals: (day: string) => (db.prepare("SELECT * FROM bookings WHERE day = ? AND status IN ('CONFIRMED', 'CHECKED_IN') ORDER BY guest_name").all(day) as unknown as BookingRow[]).map(snapshot),
 
+    // Console overview for one date: the four KPI cards plus a 7-day trend
+    // (the 6 days before `day`, then `day`) for the small bar charts.
+    overview(day: string) {
+      // Counts for one date: expected arrivals, checked in, walk-ins, online,
+      // cancelled, and units marked unavailable out of total capacity.
+      const countsFor = (d: string) => {
+        const b = db.prepare(
+          `SELECT
+             SUM(status IN ('CONFIRMED', 'CHECKED_IN'))                         AS arrivals,
+             SUM(status = 'CHECKED_IN')                                         AS checkedIn,
+             SUM(source = 'WALKIN' AND status IN ('CONFIRMED', 'CHECKED_IN'))  AS walkins,
+             SUM(source = 'ONLINE' AND status IN ('CONFIRMED', 'CHECKED_IN'))  AS online,
+             SUM(status = 'CANCELLED')                                          AS cancelled
+           FROM bookings WHERE day = ?`,
+        ).get(d) as Record<string, number | null>;
+        const inv = db.prepare('SELECT SUM(blocked) AS blocked, SUM(capacity) AS capacity FROM inventory WHERE day = ?').get(d) as Record<string, number | null>;
+        return {
+          day: d, arrivals: b.arrivals ?? 0, checkedIn: b.checkedIn ?? 0, walkins: b.walkins ?? 0, online: b.online ?? 0,
+          cancelled: b.cancelled ?? 0, blocked: inv.blocked ?? 0, capacity: inv.capacity ?? 0,
+        };
+      };
+      const trend = Array.from({ length: 7 }, (_, i) => countsFor(addDays(day, i - 6)));
+      return { ...trend[6], trend };
+    },
+
     // Inventory of all services for one day (console "Availability" tab).
     inventory(day: string) {
       return db.prepare(

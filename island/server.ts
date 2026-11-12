@@ -460,6 +460,9 @@ app.get('/api/state', route((req) => {
   };
 }));
 
+// KPI cards on the console's Arrivals page: counts for a date + 7-day trend.
+app.get('/api/overview', route((req) => engine.overview((req.query.day as string) || today())));
+
 // Today's (or a given day's) arrivals, or a search by reference / name.
 app.get('/api/bookings', route((req) => {
   if (req.query.q) return engine.search(String(req.query.q));

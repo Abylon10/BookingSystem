@@ -2,7 +2,8 @@
 <!--
   island/console/index.html
   Front desk console for one island (v2). Served by island/server.ts at http://localhost:<httpPort>.
-  Behaviour in app.js, colours in style.css.
+  Layout: left sidebar (pages) + top bar (page title, search, link status, user) + page content.
+  Behaviour in app.js, colours and layout in style.css.
 -->
 <html lang="en">
 <head>
@@ -14,8 +15,8 @@
 <body>
   <!-- Sign-in / first-run setup (checked against this island's own staff list, works offline) -->
   <div id="auth" class="auth hidden">
-    <form id="auth-form" class="card auth-card">
-      <h1 id="auth-island">Island</h1>
+    <form id="auth-form" class="auth-card">
+      <div class="brand"><span class="logo">⛵</span><span id="auth-island">Island</span></div>
       <p class="muted" id="auth-hint">Front desk sign in</p>
       <input id="auth-user" placeholder="Username" autocomplete="username" required>
       <input id="auth-pass" type="password" placeholder="Password" autocomplete="current-password" required>
@@ -24,113 +25,146 @@
     </form>
   </div>
 
-  <!-- Header: island, link status, partition switch, signed-in staff -->
-  <header>
-    <div>
-      <h1 id="island-name">Island</h1>
-      <p class="muted" id="sync-status">Front desk console</p>
+  <!-- Booking details / ID check dialog (opened from the arrivals table) -->
+  <div id="details" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="d-title">Booking</h2><button class="icon" id="d-close" title="Close">✕</button></div>
+      <div id="d-body"></div>
+      <div class="modal-actions" id="d-actions"></div>
     </div>
-    <div class="head-right">
-      <label class="toggle" title="Simulate losing the link to central">
-        <input type="checkbox" id="partition"><span>Disconnect from Central</span>
-      </label>
-      <span class="who" id="who"></span>
-      <button class="ghost" id="logout">Sign out</button>
-    </div>
-  </header>
+  </div>
 
-  <!-- Tabs -->
-  <nav class="tabs" id="tabs">
-    <button data-tab="arrivals" class="active">Arrivals</button>
-    <button data-tab="walkin">Walk-in booking</button>
-    <button data-tab="availability">Availability</button>
-    <button data-tab="bookings">Bookings</button>
-    <button data-tab="staff" id="tab-staff" class="hidden">Staff</button>
-  </nav>
-
-  <main>
-    <!-- Arrivals: guest shows their confirmation info; find it, check the ID, confirm -->
-    <section id="arrivals" class="tab">
-      <div class="card">
-        <h2>Find a booking</h2>
-        <form id="find-form" class="row">
-          <input id="find-q" placeholder="Reference (MRP-7F3K2) or guest name" autocomplete="off">
-          <button type="submit">Search</button>
-          <input type="date" id="arr-day" title="Arrivals on">
-        </form>
-        <p class="muted small">Ask for the confirmation shown in the guest's app, then compare their physical ID with the name and the last 4 digits.</p>
-        <div id="arr-list" class="list"></div>
+  <div class="shell">
+    <!-- Sidebar: island name, pages with live counts, partition switch, sign out -->
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">⛵</span><span id="island-name">Island</span></div>
+      <nav id="tabs">
+        <button data-tab="arrivals" class="active"><span class="ico">⌂</span>Arrivals<span class="count" id="n-arrivals"></span></button>
+        <button data-tab="walkin"><span class="ico">＋</span>Walk-in booking</button>
+        <button data-tab="availability"><span class="ico">▦</span>Availability<span class="count warn" id="n-blocked"></span></button>
+        <button data-tab="bookings"><span class="ico">☰</span>Bookings</button>
+        <button data-tab="staff" id="tab-staff" class="hidden"><span class="ico">☺</span>Staff</button>
+      </nav>
+      <div class="side-foot">
+        <label class="toggle" title="Simulate losing the link to central">
+          <input type="checkbox" id="partition"><span>Disconnect from Central</span>
+        </label>
+        <button class="ghost" id="logout">Sign out</button>
       </div>
-    </section>
+    </aside>
 
-    <!-- Walk-in: same inventory as online bookings; paid at the desk -->
-    <section id="walkin" class="tab hidden">
-      <div class="card">
-        <h2>Walk-in booking</h2>
-        <form id="walkin-form" class="grid2">
-          <label>Package<select id="w-package" required></select></label>
-          <label>Date<input id="w-day" type="date" required></label>
-          <label>Guests<input id="w-guests" type="number" min="1" value="2" required></label>
-          <label>Guest name<input id="w-name" required></label>
-          <label>Phone (optional)<input id="w-phone"></label>
-          <label>E-mail (optional)<input id="w-email" type="email"></label>
-          <label>ID type<select id="w-idtype"><option>PhilSys ID</option><option>Passport</option><option>Driver's License</option><option>Student ID</option></select></label>
-          <label>ID last 4 digits<input id="w-last4" pattern="\d{4}" maxlength="4" required></label>
-          <div class="span2 total-row"><span id="w-total" class="price"></span><button type="submit">Book and collect payment</button></div>
-        </form>
-        <div id="walkin-result"></div>
-      </div>
-    </section>
-
-    <!-- Availability: packages and every service's inventory; mark units unavailable -->
-    <section id="availability" class="tab hidden">
-      <div class="card">
-        <div class="row between">
-          <h2>Availability</h2>
-          <div class="row"><input type="date" id="av-day"><input type="number" id="av-guests" min="1" value="2" title="Guests"></div>
+    <div class="page">
+      <!-- Top bar: page title, quick search (reference or name), link status, signed-in staff -->
+      <header class="topbar">
+        <div>
+          <p class="crumb" id="crumb">Arrivals</p>
+          <p class="sync" id="sync-status"><span class="dot"></span>Checking link…</p>
         </div>
-        <h3>Packages</h3>
-        <div id="av-packages" class="list"></div>
-        <h3>Services</h3>
-        <table><thead><tr><th>Service</th><th>Capacity</th><th>Booked</th><th>Unavailable</th><th>Free</th><th></th></tr></thead><tbody id="av-services"></tbody></table>
-      </div>
-      <div class="card">
-        <h2>Mark unavailable</h2>
-        <form id="block-form" class="grid2">
-          <label>Service<select id="b-service" required></select></label>
-          <label>From<input id="b-day" type="date" required></label>
-          <label>Days<input id="b-days" type="number" min="1" value="1"></label>
-          <label>Units (0 = all free)<input id="b-units" type="number" min="0" value="1"></label>
-          <label class="span2">Reason<input id="b-reason" placeholder="Repairs, weather, boat not running…"></label>
-          <div class="span2"><button type="submit">Mark unavailable</button></div>
-        </form>
-        <div id="block-result"></div>
-      </div>
-    </section>
+        <form id="top-search" class="search"><input id="top-q" placeholder="Search reference or guest name…" autocomplete="off"><button type="submit" class="icon" title="Search">⌕</button></form>
+        <div class="user"><span class="avatar" id="avatar">?</span><span id="who"></span></div>
+      </header>
 
-    <!-- Bookings: everything on this island, online and walk-in -->
-    <section id="bookings" class="tab hidden">
-      <div class="card wide">
-        <h2>Recent bookings</h2>
-        <table><thead><tr><th>Reference</th><th>Source</th><th>Package</th><th>Date</th><th>Guests</th><th>Guest</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="bk-list"></tbody></table>
-      </div>
-    </section>
+      <main>
+        <!-- Arrivals: KPI cards, then the day's arrivals with ID check + check-in -->
+        <section id="arrivals" class="tab">
+          <div class="section-head">
+            <h1>Overview</h1>
+            <input type="date" id="arr-day" title="Show this date">
+          </div>
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-head c-primary">Arrivals</div>
+              <div class="kpi-body"><div class="bars" id="k-arr-bars"></div><div><b id="k-arr">0</b><span id="k-arr-sub">expected</span></div></div></div>
+            <div class="kpi"><div class="kpi-head c-ok">Checked in</div>
+              <div class="kpi-body"><div class="ring" id="k-in-ring"><span id="k-in-ratio">0/0</span></div><div><b id="k-in">0</b><span>at the desk</span></div></div></div>
+            <div class="kpi"><div class="kpi-head c-accent">Walk-ins</div>
+              <div class="kpi-body"><div class="bars" id="k-walk-bars"></div><div><b id="k-walk">0</b><span id="k-walk-sub">online 0</span></div></div></div>
+            <div class="kpi"><div class="kpi-head c-danger">Cancelled</div>
+              <div class="kpi-body"><div class="bars" id="k-can-bars"></div><div><b id="k-can">0</b><span id="k-can-sub">0 units unavailable</span></div></div></div>
+          </div>
 
-    <!-- Staff: node admin only -->
-    <section id="staff" class="tab hidden">
-      <div class="card">
-        <h2>Staff accounts</h2>
-        <table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody id="staff-list"></tbody></table>
-        <h3>Add receptionist</h3>
-        <form id="staff-form" class="row">
-          <input id="s-user" placeholder="Username" required>
-          <input id="s-pass" type="password" placeholder="Password (8+ characters)" required>
-          <button type="submit">Add</button>
-        </form>
-        <p id="staff-result" class="small"></p>
-      </div>
-    </section>
-  </main>
+          <div class="section-head">
+            <h2 id="arr-title">Today's arrivals</h2>
+            <span class="muted small" id="arr-count"></span>
+            <button class="link hidden" id="arr-clear">Show the day's arrivals</button>
+          </div>
+          <div class="card flush">
+            <table class="arrivals">
+              <thead><tr><th>Guest</th><th>Reference</th><th>Package</th><th>Source</th><th>Guests</th><th>ID to check</th><th>Status</th><th>Actions</th><th></th></tr></thead>
+              <tbody id="arr-list"></tbody>
+            </table>
+          </div>
+          <p class="muted small">Ask for the confirmation shown in the guest's app, then compare their physical ID with the name and the last 4 digits before checking in.</p>
+        </section>
+
+        <!-- Walk-in: same inventory as online bookings; paid at the desk -->
+        <section id="walkin" class="tab hidden">
+          <div class="card">
+            <h2>Walk-in booking</h2>
+            <form id="walkin-form" class="grid2">
+              <label>Package<select id="w-package" required></select></label>
+              <label>Date<input id="w-day" type="date" required></label>
+              <label>Guests<input id="w-guests" type="number" min="1" value="2" required></label>
+              <label>Guest name<input id="w-name" required></label>
+              <label>Phone (optional)<input id="w-phone"></label>
+              <label>E-mail (optional)<input id="w-email" type="email"></label>
+              <label>ID type<select id="w-idtype"><option>PhilSys ID</option><option>Passport</option><option>Driver's License</option><option>UMID</option><option>Student ID</option></select></label>
+              <label>ID last 4 digits<input id="w-last4" pattern="\d{4}" maxlength="4" required></label>
+              <div class="span2 total-row"><span id="w-total" class="price"></span><button type="submit">Book and collect payment</button></div>
+            </form>
+            <div id="walkin-result"></div>
+          </div>
+        </section>
+
+        <!-- Availability: packages and every service's inventory; mark units unavailable -->
+        <section id="availability" class="tab hidden">
+          <div class="card">
+            <div class="row between">
+              <h2>Availability</h2>
+              <div class="row"><input type="date" id="av-day"><input type="number" id="av-guests" min="1" value="2" title="Guests"></div>
+            </div>
+            <h3>Packages</h3>
+            <div id="av-packages" class="list"></div>
+            <h3>Services</h3>
+            <table><thead><tr><th>Service</th><th>Capacity</th><th>Booked</th><th>Unavailable</th><th>Free</th><th></th></tr></thead><tbody id="av-services"></tbody></table>
+          </div>
+          <div class="card">
+            <h2>Mark unavailable</h2>
+            <form id="block-form" class="grid2">
+              <label>Service<select id="b-service" required></select></label>
+              <label>From<input id="b-day" type="date" required></label>
+              <label>Days<input id="b-days" type="number" min="1" value="1"></label>
+              <label>Units (0 = all free)<input id="b-units" type="number" min="0" value="1"></label>
+              <label class="span2">Reason<input id="b-reason" placeholder="Repairs, weather, boat not running…"></label>
+              <div class="span2"><button type="submit">Mark unavailable</button></div>
+            </form>
+            <div id="block-result"></div>
+          </div>
+        </section>
+
+        <!-- Bookings: everything on this island, online and walk-in -->
+        <section id="bookings" class="tab hidden">
+          <div class="card flush">
+            <table><thead><tr><th>Reference</th><th>Source</th><th>Package</th><th>Date</th><th>Guests</th><th>Guest</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="bk-list"></tbody></table>
+          </div>
+        </section>
+
+        <!-- Staff: node admin only -->
+        <section id="staff" class="tab hidden">
+          <div class="card">
+            <h2>Staff accounts</h2>
+            <table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody id="staff-list"></tbody></table>
+            <h3>Add receptionist</h3>
+            <form id="staff-form" class="row">
+              <input id="s-user" placeholder="Username" required>
+              <input id="s-pass" type="password" placeholder="Password (8+ characters)" required>
+              <button type="submit">Add</button>
+            </form>
+            <p id="staff-result" class="small"></p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

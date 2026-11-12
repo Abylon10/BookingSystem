@@ -78,13 +78,17 @@ $('logout').addEventListener('click', () => {
 // Tabs
 // ---------------------------------------------------------------------------
 
-for (const b of document.querySelectorAll('#tabs button')) {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== b.dataset.tab));
-    refreshTab(b.dataset.tab);
-  });
+// Page titles shown in the top bar.
+const TITLES = { arrivals: 'Arrivals', walkin: 'Walk-in booking', availability: 'Availability', bookings: 'Bookings', staff: 'Staff' };
+
+// Shows one page: highlights its sidebar button, sets the title, reloads it.
+function showTab(tab) {
+  document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== tab));
+  $('crumb').textContent = TITLES[tab] ?? tab;
+  refreshTab(tab);
 }
+for (const b of document.querySelectorAll('#tabs button')) b.addEventListener('click', () => showTab(b.dataset.tab));
 const currentTab = () => document.querySelector('#tabs button.active').dataset.tab;
 function refreshTab(tab) {
   ({ arrivals: loadArrivals, walkin: updateTotal, availability: loadAvailability, bookings: loadBookings, staff: loadStaff }[tab] ?? (() => {}))();
@@ -100,9 +104,11 @@ async function loadHeader() {
   document.title = `${s.island.name} · Front desk`;
   $('partition').checked = s.partitioned;
   const link = { lan: 'LAN', connected: 'cloud link', polling: 'cloud, HTTPS polling', connecting: 'reconnecting…' }[s.centralLink] ?? '';
-  $('sync-status').textContent = s.partitioned
-    ? `Offline from central — ${s.outboxPending} change(s) waiting to sync`
-    : `Connected (${link}) — ${s.outboxPending} change(s) waiting to sync`;
+  // Green dot = linked to central; red = cut off (desk still works, changes queue up).
+  const online = !s.partitioned && s.centralLink !== 'connecting';
+  const waiting = s.outboxPending ? ` · ${s.outboxPending} change(s) waiting to sync` : ' · all synced';
+  $('sync-status').className = `sync ${online ? 'on' : 'off'}`;
+  $('sync-status').innerHTML = `<span class="dot"></span>${esc(s.partitioned ? 'Offline from central' : `Central: ${link}`)}${esc(waiting)}`;
   packages = s.packages;
   if (!$('w-package').options.length) {
     $('w-package').innerHTML = s.packages.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
@@ -113,36 +119,149 @@ async function loadHeader() {
 $('partition').addEventListener('change', async (e) => { await api('/api/partition', { on: e.target.checked }); loadHeader(); });
 
 // ---------------------------------------------------------------------------
-// Arrivals: search + confirm arrival after the ID check
+// Arrivals page: KPI cards for the chosen date
 // ---------------------------------------------------------------------------
 
-function bookingItem(b) {
+// Draws a 7-bar mini chart; the last bar (the chosen date) is highlighted.
+function bars(el, values, tone) {
+  const max = Math.max(1, ...values);
+  el.className = `bars ${tone ?? ''}`;
+  el.innerHTML = values.map((v, i) => `<i class="${i === values.length - 1 ? 'now' : ''}" style="height:${Math.round((v / max) * 100)}%" title="${v}"></i>`).join('');
+}
+
+// Loads the overview for the chosen date and fills the four cards plus the
+// sidebar counters (arrivals still to check in, units marked unavailable).
+async function loadOverview() {
+  const day = $('arr-day').value;
+  const o = await api(`/api/overview?day=${day}`);
+  const isToday = day === todayStr();
+  $('k-arr').textContent = o.arrivals;
+  $('k-arr-sub').textContent = isToday ? 'expected today' : `expected ${fmtDay(day)}`;
+  bars($('k-arr-bars'), o.trend.map((t) => t.arrivals));
+  $('k-in').textContent = o.checkedIn;
+  $('k-in-ratio').textContent = `${o.checkedIn}/${o.arrivals}`;
+  $('k-in-ring').style.setProperty('--p', o.arrivals ? Math.round((o.checkedIn / o.arrivals) * 100) : 0);
+  $('k-walk').textContent = o.walkins;
+  $('k-walk-sub').textContent = `online ${o.online}`;
+  bars($('k-walk-bars'), o.trend.map((t) => t.walkins), 'accent');
+  $('k-can').textContent = o.cancelled;
+  $('k-can-sub').textContent = `${o.blocked} unit(s) unavailable`;
+  bars($('k-can-bars'), o.trend.map((t) => t.cancelled), 'danger');
+  if (isToday) {
+    $('n-arrivals').textContent = o.arrivals - o.checkedIn || '';
+    $('n-blocked').textContent = o.blocked || '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Arrivals page: table of the day's arrivals (or search results)
+// ---------------------------------------------------------------------------
+
+let arrQuery = '';     // '' = show the chosen date's arrivals; otherwise a search
+let arrRows = [];      // bookings currently in the table (for the details dialog)
+
+// Two-letter initials for the avatar circle.
+const initials = (name) => String(name ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('') || '?';
+
+// One table row: guest, reference, package, source, guests, ID to check,
+// status, ✓ check in / ✕ cancel, and a "View details" button.
+function arrivalRow(b) {
   const canCheckIn = b.status === 'CONFIRMED';
-  return `<div class="item">
-    <div>
-      <b>${esc(b.guest_name)}</b> · <span class="muted">${esc(b.reference)}</span>
-      <span class="badge ${esc(b.source)}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span>
-      <span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span>
-      <div class="meta">${esc(b.package_name)} · ${fmtDay(b.day)} · ${b.guests} guest(s) · ${peso(b.total_php)}</div>
-      ${canCheckIn ? `<div class="idcheck">Check ID: <b>${esc(b.guest_name)}</b> · ${esc(b.id_type)} ending <b>${esc(b.id_last4)}</b></div>` : ''}
-    </div>
-    <div>${canCheckIn ? `<button class="ok" data-checkin="${esc(b.reference)}">ID matches — Check in</button>` : ''}</div>
-  </div>`;
+  const canCancel = ['CONFIRMED', 'HELD'].includes(b.status);
+  return `<tr>
+    <td><div class="guest"><span class="avatar">${esc(initials(b.guest_name))}</span>${esc(b.guest_name)}</div></td>
+    <td class="ref">${esc(b.reference)}</td>
+    <td>${esc(b.package_name)}${arrQuery ? `<div class="small">${fmtDay(b.day)}</div>` : ''}</td>
+    <td><span class="badge ${esc(b.source)}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span></td>
+    <td>${b.guests}</td>
+    <td class="idhint">${esc(b.id_type)} ·· <b>${esc(b.id_last4)}</b></td>
+    <td><span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
+    <td><div class="actions">
+      <button class="act in" data-checkin="${esc(b.reference)}" title="ID matches — check in" ${canCheckIn ? '' : 'disabled'}>✓</button>
+      <button class="act x" data-cancel="${esc(b.reference)}" title="Cancel booking" ${canCancel ? '' : 'disabled'}>✕</button>
+    </div></td>
+    <td><button class="pill" data-details="${esc(b.reference)}">View details</button></td>
+  </tr>`;
 }
-async function loadArrivals(q) {
-  const query = q ?? $('find-q').value.trim();
-  const list = query ? await api(`/api/bookings?q=${encodeURIComponent(query)}`) : await api(`/api/bookings?day=${$('arr-day').value}`);
-  $('arr-list').innerHTML = list.map(bookingItem).join('')
-    || `<p class="muted">${query ? 'No booking matches that reference or name on this island.' : `No arrivals on ${fmtDay($('arr-day').value)}.`}</p>`;
+
+// Loads the table: a search when `arrQuery` is set, else the date's arrivals.
+async function loadArrivals() {
+  const day = $('arr-day').value;
+  arrRows = arrQuery ? await api(`/api/bookings?q=${encodeURIComponent(arrQuery)}`) : await api(`/api/bookings?day=${day}`);
+  $('arr-title').textContent = arrQuery ? `Search: “${arrQuery}”` : day === todayStr() ? "Today's arrivals" : `Arrivals · ${fmtDay(day)}`;
+  $('arr-count').textContent = `${arrRows.length} booking(s)`;
+  $('arr-clear').classList.toggle('hidden', !arrQuery);
+  $('arr-list').innerHTML = arrRows.map(arrivalRow).join('')
+    || `<tr><td colspan="9" class="muted">${arrQuery ? 'No booking matches that reference or name on this island.' : `No arrivals on ${fmtDay(day)}.`}</td></tr>`;
+  loadOverview().catch(() => {});
 }
-$('find-form').addEventListener('submit', (e) => { e.preventDefault(); loadArrivals(); });
-$('arr-day').addEventListener('change', () => { $('find-q').value = ''; loadArrivals(''); });
-$('arr-list').addEventListener('click', async (e) => {
-  const ref = e.target.dataset?.checkin;
-  if (!ref) return;
-  try { await api(`/api/bookings/${ref}/checkin`, {}); } catch (err) { alert(err.message); }
-  loadArrivals();
+
+// Date picker: back to that date's arrivals.
+$('arr-day').addEventListener('change', () => { arrQuery = ''; $('top-q').value = ''; loadArrivals(); });
+$('arr-clear').addEventListener('click', () => { arrQuery = ''; $('top-q').value = ''; loadArrivals(); });
+
+// Top-bar search (reference or name) always shows results on the Arrivals page.
+$('top-search').addEventListener('submit', (e) => {
+  e.preventDefault();
+  arrQuery = $('top-q').value.trim();
+  showTab('arrivals');
 });
+
+// Check-in and cancel, used by the table buttons and the details dialog.
+async function checkIn(ref) {
+  try { await api(`/api/bookings/${ref}/checkin`, {}); } catch (err) { alert(err.message); }
+  closeDetails();
+  loadArrivals();
+}
+async function cancelBooking(ref) {
+  if (!confirm(`Cancel ${ref}? Its units go back on sale.`)) return;
+  try { await api(`/api/bookings/${ref}/cancel`, {}); } catch (err) { alert(err.message); }
+  closeDetails();
+  loadArrivals();
+}
+
+// Table buttons: ✓ check in, ✕ cancel, View details.
+$('arr-list').addEventListener('click', (e) => {
+  const d = e.target.closest('button')?.dataset ?? {};
+  if (d.checkin) checkIn(d.checkin);
+  else if (d.cancel) cancelBooking(d.cancel);
+  else if (d.details) openDetails(d.details);
+});
+
+// ---------------------------------------------------------------------------
+// Booking details dialog: full booking + the ID check, then check in
+// ---------------------------------------------------------------------------
+
+function openDetails(ref) {
+  const b = arrRows.find((x) => x.reference === ref);
+  if (!b) return;
+  $('d-title').textContent = b.reference;
+  $('d-body').innerHTML = `
+    <div class="idbox">Check the guest's ID: <b>${esc(b.guest_name)}</b> · ${esc(b.id_type)} ending <b>${esc(b.id_last4)}</b></div>
+    <dl class="dl">
+      <dt>Status</dt><dd><span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></dd>
+      <dt>Package</dt><dd>${esc(b.package_name)}</dd>
+      <dt>Date</dt><dd>${fmtDay(b.day)}${b.nights ? ` · ${b.nights} night(s)` : ' · day trip'}</dd>
+      <dt>Guests</dt><dd>${b.guests}</dd>
+      <dt>Booked</dt><dd>${b.source === 'ONLINE' ? 'Online (app)' : 'Walk-in (desk)'}</dd>
+      <dt>Paid</dt><dd>${peso(b.total_php)}</dd>
+      ${b.phone ? `<dt>Phone</dt><dd>${esc(b.phone)}</dd>` : ''}
+      ${b.email ? `<dt>E-mail</dt><dd>${esc(b.email)}</dd>` : ''}
+    </dl>`;
+  $('d-actions').innerHTML = `
+    ${['CONFIRMED', 'HELD'].includes(b.status) ? `<button class="danger" data-cancel="${esc(b.reference)}">Cancel booking</button>` : ''}
+    ${b.status === 'CONFIRMED' ? `<button class="ok" data-checkin="${esc(b.reference)}">ID matches — Check in</button>` : ''}`;
+  $('details').classList.remove('hidden');
+}
+function closeDetails() { $('details').classList.add('hidden'); }
+$('d-close').addEventListener('click', closeDetails);
+$('details').addEventListener('click', (e) => { if (e.target.id === 'details') closeDetails(); });
+$('d-actions').addEventListener('click', (e) => {
+  const d = e.target.closest('button')?.dataset ?? {};
+  if (d.checkin) checkIn(d.checkin);
+  else if (d.cancel) cancelBooking(d.cancel);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetails(); });
 
 // ---------------------------------------------------------------------------
 // Walk-in booking
@@ -264,9 +383,16 @@ $('staff-form').addEventListener('submit', async (e) => {
 function start() {
   try { me = JSON.parse(localStorage.getItem('desk-me') || 'null'); } catch { /* ignore */ }
   $('who').textContent = me ? `${me.user} · ${me.role === 'node_admin' ? 'Node admin' : 'Receptionist'}` : '';
+  $('avatar').textContent = me ? me.user.slice(0, 2) : '?';
   $('tab-staff').classList.toggle('hidden', me?.role !== 'node_admin');
   loadHeader().then(() => refreshTab(currentTab())).catch(() => {});
 }
 for (const id of ['arr-day', 'w-day', 'av-day', 'b-day']) $(id).value = todayStr();
 if (token) start(); else showAuth();
-setInterval(() => { if (token && !document.hidden) loadHeader().catch(() => {}); }, 3000);
+// Every 3 s: link status, and the KPI cards while the Arrivals page is open
+// (online bookings arrive from central without anyone touching this screen).
+setInterval(() => {
+  if (!token || document.hidden) return;
+  loadHeader().catch(() => {});
+  if (currentTab() === 'arrivals') loadOverview().catch(() => {});
+}, 3000);
