@@ -169,6 +169,70 @@ grpcServer.bindAsync(`0.0.0.0:${me.grpcPort}`, grpc.ServerCredentials.createInse
 const CENTRAL_URL = process.env.CENTRAL_URL?.replace(/\/+$/, '');
 let link: Peer | null = null;
 
+// Which cloud transport is in use. "ws" = WebSocket link (preferred);
+// "poll" = HTTPS long polling, for networks that block WebSockets. The island
+// switches to polling by itself after 2 WebSocket attempts that never got
+// central's welcome. LINK_MODE=poll starts with polling; LINK_MODE=ws never
+// switches.
+let linkMode: 'ws' | 'poll' = process.env.LINK_MODE === 'poll' ? 'poll' : 'ws';
+let failedWsAttempts = 0;
+let pollConnected = false;
+
+// Signed header for polling requests: "<island>.<ms>.<hmac>", the same
+// signature the WebSocket hello uses.
+function pollAuth(): Record<string, string> {
+  const ts = Date.now();
+  return { 'Content-Type': 'application/json', 'X-Island-Auth': `${island.id}.${ts}.${helloSignature(secret, island.id, ts)}` };
+}
+
+// Polling loop: ask central for calls (it holds the request up to ~20 s until
+// one arrives), run them through the same handlers, post the results back.
+async function pollLoop(): Promise<void> {
+  let backoff = 1000;
+  let lastError = '';
+  for (;;) {
+    try {
+      // First poll returns at once (wait=0) so "connected" shows immediately.
+      const res = await fetch(`${CENTRAL_URL}/island-poll/next${pollConnected ? '' : '?wait=0'}`, {
+        method: 'POST', headers: pollAuth(), body: '{}', signal: AbortSignal.timeout(40_000),
+      });
+      if (res.status === 401) throw new Error('central rejected the island — is TICKET_SECRET the same as central\'s?');
+      if (!res.ok) throw new Error(`central answered HTTP ${res.status}`);
+      const { requests } = await res.json() as { requests: { id: number; m: string; p: unknown }[] };
+      if (!pollConnected) {
+        pollConnected = true;
+        lastError = '';
+        console.log(`[${island.id}] connected to central at ${CENTRAL_URL} (HTTPS polling)`);
+      }
+      backoff = 1000;
+      // Run each call and post its reply; calls run concurrently, like on the WebSocket link.
+      for (const r of requests) {
+        serve(r.m, r.p).then(
+          (p) => ({ id: r.id, ok: true, p }),
+          (e) => ({ id: r.id, ok: false, e: { code: e.code ?? 'INTERNAL', message: e.message } }),
+        ).then((reply) => fetch(`${CENTRAL_URL}/island-poll/reply`, {
+          method: 'POST', headers: pollAuth(), body: JSON.stringify(reply),
+        })).catch(() => { /* central retries via timeout */ });
+      }
+    } catch (err) {
+      pollConnected = false;
+      const text = (err as Error).message;
+      if (text !== lastError) {
+        lastError = text;
+        console.warn(`[${island.id}] polling central failed: ${text} — retrying`);
+      }
+      await new Promise((r) => setTimeout(r, backoff));
+      backoff = Math.min(backoff * 2, 30_000);
+    }
+  }
+}
+
+function startPolling(reason: string): void {
+  linkMode = 'poll';
+  console.warn(`[${island.id}] ${reason}; switching to HTTPS polling`);
+  pollLoop();
+}
+
 // Opens the link, signs the hello, and reconnects with backoff when it drops
 // (Wi-Fi blip, central restarting, cloud host waking up).
 let reconnectDelay = 1000;
@@ -201,6 +265,7 @@ function connectLink(): void {
     const msg = data.toString();
     if (msg.includes('"t":"welcome"')) {
       welcomed = true;
+      failedWsAttempts = 0;
       reconnectDelay = 1000;
       lastLinkError = '';
       console.log(`[${island.id}] connected to central at ${CENTRAL_URL}`);
@@ -217,6 +282,12 @@ function connectLink(): void {
       if (text !== lastLinkError) {
         lastLinkError = text;
         console.warn(`[${island.id}] link to central ${text} — retrying`);
+      }
+      // Two WebSocket attempts that never reached central's welcome: this
+      // network is probably blocking WebSockets, so use plain HTTPS instead.
+      if (++failedWsAttempts >= 2 && process.env.LINK_MODE !== 'ws') {
+        startPolling('WebSocket link does not work on this network');
+        return;
       }
     }
     setTimeout(connectLink, reconnectDelay);
@@ -235,7 +306,8 @@ function connectLink(): void {
 }
 if (CENTRAL_URL) console.log(`[${island.id}] cloud mode: connecting to central at ${CENTRAL_URL}…`);
 else console.log(`[${island.id}] LAN mode (no CENTRAL_URL set): central must reach this laptop directly`);
-connectLink();
+if (CENTRAL_URL && linkMode === 'poll') startPolling('LINK_MODE=poll');
+else connectLink();
 
 // Free cloud hosts sleep when they get no HTTP traffic for a while; a light
 // ping every 5 minutes keeps central awake while islands are running.
@@ -277,10 +349,16 @@ async function drainOutbox() {
     })),
   };
   try {
-    // Prefer the island link (cloud); fall back to gRPC (LAN).
+    // Cloud: WebSocket link, or plain HTTPS when polling; LAN: gRPC.
     let ack: { accepted_event_ids: string[] };
     if (link?.open) ack = await link.call('PushEvents', batch, 10_000);
-    else if (central) ack = await call(central, 'PushEvents', batch, 10_000);
+    else if (CENTRAL_URL && linkMode === 'poll') {
+      const res = await fetch(`${CENTRAL_URL}/island-poll/events`, {
+        method: 'POST', headers: pollAuth(), body: JSON.stringify(batch), signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return;
+      ack = await res.json() as { accepted_event_ids: string[] };
+    } else if (central) ack = await call(central, 'PushEvents', batch, 10_000);
     else return;
     const mark = db.prepare('UPDATE outbox SET sent_at = ? WHERE event_id = ?');
     for (const id of ack.accepted_event_ids) mark.run(Date.now(), id);
@@ -319,7 +397,9 @@ app.get('/api/state', wrap((req) => {
        FROM listings l LEFT JOIN inventory i ON i.listing_id = l.id AND i.day = ?`,
   ).all(day);
   const outboxPending = (db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NULL').get() as { n: number }).n;
-  const centralLink = CENTRAL_URL ? (link?.open ? 'connected' : 'connecting') : 'lan';
+  const centralLink = !CENTRAL_URL ? 'lan'
+    : link?.open ? 'connected'
+      : linkMode === 'poll' ? (pollConnected ? 'polling' : 'connecting') : 'connecting';
   return { island: { id: island.id, name: island.name }, day, partitioned, outboxPending, centralLink, listings };
 }));
 

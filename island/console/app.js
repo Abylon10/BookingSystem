@@ -42,7 +42,7 @@ async function refresh() {
   $('partition').checked = state.partitioned;
   // Link status: "lan" = central calls us directly on the hotspot; otherwise
   // we keep an outgoing link to central in the cloud ("connected"/"connecting").
-  const link = { lan: 'LAN', connected: 'cloud link up', connecting: 'cloud link reconnecting…' }[state.centralLink] ?? '';
+  const link = { lan: 'LAN', connected: 'cloud link up', polling: 'cloud link up, HTTPS polling', connecting: 'cloud link reconnecting…' }[state.centralLink] ?? '';
   $('sync-status').textContent = state.partitioned
     ? `Offline from central — ${state.outboxPending} event(s) waiting to sync`
     : `Connected (${link}) — ${state.outboxPending} event(s) waiting to sync`;

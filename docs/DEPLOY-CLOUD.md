@@ -20,6 +20,7 @@ open. All RPC calls travel over that connection in both directions, so island la
 | Who may connect | Island signs a hello with `TICKET_SECRET` (HMAC, 5-minute window); others are closed with code 4003 |
 | Encryption | HTTPS / WSS (TLS) between every island and central |
 | Link drops (Wi-Fi blip, redeploy) | Island reconnects automatically with backoff (1 s → 30 s) |
+| Network blocks WebSockets (school/office Wi-Fi, antivirus web shield) | After 2 failed attempts the island switches to **HTTPS long polling** (`/island-poll/*`, same signed auth); `LINK_MODE=poll` forces it |
 | Free host sleeping after 15 min idle | Islands ping `/health` every 5 minutes while running |
 | Admin dashboard on a public URL | `/` asks for `ADMIN_PASSWORD`; data API needs a signed 12-hour session token |
 | Island offline | Same as before: walk-ins keep working, outbox syncs on reconnect |

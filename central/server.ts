@@ -23,6 +23,7 @@ import { WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ROOT, loadNetwork, ticketSecret, today } from '../shared/config.ts';
 import { mountAdmin } from './admin.ts';
+import { PollPeer, mountPolling } from './poll.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
 import { Peer, LinkError, errorText, verifyHello } from '../shared/link.ts';
 import { newCode, signTicket } from '../shared/ticket.ts';
@@ -51,9 +52,23 @@ const islands = network.islands.map((i) => ({
   client: i.host ? new IslandService(`${i.host}:${i.grpcPort}`, grpc.credentials.createInsecure()) : null,
 }));
 type Island = (typeof islands)[number];
+const knownIslands = new Set(islands.map((i) => i.id));
 
-// Islands currently connected over an island link, by island id.
-const links = new Map<string, Peer>();
+// Islands currently connected, by island id: over a WebSocket link (Peer) or,
+// on networks that block WebSockets, over HTTPS long polling (PollPeer).
+const links = new Map<string, Peer | PollPeer>();
+
+// Returns the island's poll peer, replacing a WebSocket link if it had one
+// (an island that polls has decided its WebSocket does not work).
+function pollPeerFor(islandId: string): PollPeer {
+  const current = links.get(islandId);
+  if (current instanceof PollPeer) return current;
+  current?.close();
+  const peer = new PollPeer();
+  links.set(islandId, peer);
+  console.log(`[central] ${islandId} connected over HTTPS polling`);
+  return peer;
+}
 
 // Calls a method on one island, preferring its link (works across the
 // internet) and falling back to direct gRPC (LAN). Throws when neither is
@@ -100,7 +115,8 @@ async function fetchIsland(island: Island) {
   try {
     const reply = await callIsland<{ listings: ListingOut[] }>(island, 'GetCatalog', {});
     return {
-      id: island.id, status: 'online' as const, via: links.get(island.id)?.open ? 'link' : 'grpc',
+      id: island.id, status: 'online' as const,
+      via: !links.get(island.id)?.open ? 'grpc' : links.get(island.id) instanceof PollPeer ? 'poll' : 'link',
       ms: Math.round(performance.now() - started), listings: reply.listings,
     };
   } catch (err) {
@@ -172,6 +188,8 @@ app.use(express.json());
 // Central dashboard: static page at "/" plus its login-protected data API.
 app.use(express.static(join(ROOT, 'central', 'dashboard')));
 mountAdmin(app, { sb, secret, search });
+// Island link fallback over plain HTTPS (central/poll.ts).
+mountPolling(app, { secret, knownIslands, pollPeerFor, storeEvents });
 
 // Answers 503 and returns true when Supabase is not configured, so booking
 // routes can bail out with `if (needSupabase(res)) return;`.
@@ -328,7 +346,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 
 // Island links: each island connects here and sends a signed hello first.
 // Anything that does not authenticate within 5 seconds is disconnected.
-const knownIslands = new Set(islands.map((i) => i.id));
 const wss = new WebSocketServer({ server: httpServer, path: '/island-link' });
 wss.on('connection', (ws) => {
   const helloTimer = setTimeout(() => ws.close(4001, 'no hello'), 5000);

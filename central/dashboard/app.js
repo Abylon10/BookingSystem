@@ -163,7 +163,7 @@ function render(s) {
   // Island nodes
   $('island-cards').innerHTML = s.islands.map((i) => {
     const on = i.status === 'online';
-    const how = on ? (i.via === 'link' ? 'Cloud link' : 'LAN (gRPC)') : esc((i.error ?? 'unreachable').slice(0, 60));
+    const how = on ? ({ link: 'Cloud link', poll: 'Cloud (HTTPS polling)', grpc: 'LAN (gRPC)' }[i.via] ?? i.via) : esc((i.error ?? 'unreachable').slice(0, 60));
     return `<div class="island-card">
       <span class="dot ${on ? 'on' : 'off'}"></span>
       <div><b>${esc(i.id)}</b><div class="meta">${on ? 'Online' : 'Offline'} · ${how}</div></div>
