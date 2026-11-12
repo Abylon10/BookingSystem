@@ -18,9 +18,11 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { loadNetwork, ticketSecret, today } from '../shared/config.ts';
+import { ROOT, loadNetwork, ticketSecret, today } from '../shared/config.ts';
+import { mountAdmin } from './admin.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
 import { Peer, LinkError, errorText, verifyHello } from '../shared/link.ts';
 import { newCode, signTicket } from '../shared/ticket.ts';
@@ -166,6 +168,10 @@ async function search(mode: 'parallel' | 'sequential', day: string) {
 
 const app = express();
 app.use(express.json());
+
+// Central dashboard: static page at "/" plus its login-protected data API.
+app.use(express.static(join(ROOT, 'central', 'dashboard')));
+mountAdmin(app, { sb, secret, search });
 
 // Answers 503 and returns true when Supabase is not configured, so booking
 // routes can bail out with `if (needSupabase(res)) return;`.

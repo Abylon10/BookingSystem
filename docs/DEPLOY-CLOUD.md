@@ -21,6 +21,7 @@ open. All RPC calls travel over that connection in both directions, so island la
 | Encryption | HTTPS / WSS (TLS) between every island and central |
 | Link drops (Wi-Fi blip, redeploy) | Island reconnects automatically with backoff (1 s → 30 s) |
 | Free host sleeping after 15 min idle | Islands ping `/health` every 5 minutes while running |
+| Admin dashboard on a public URL | `/` asks for `ADMIN_PASSWORD`; data API needs a signed 12-hour session token |
 | Island offline | Same as before: walk-ins keep working, outbox syncs on reconnect |
 
 The direct gRPC mode (`NETWORK=hotspot`) still works for a shared Wi-Fi demo.
@@ -33,6 +34,7 @@ The direct gRPC mode (`NETWORK=hotspot`) still works for a shared Wi-Fi demo.
 3. Fill in the two secrets it asks for:
    - `SUPABASE_SERVICE_KEY` — your `sb_secret_...` key (same as central's `.env`)
    - `TICKET_SECRET` — the same value every laptop uses
+   - `ADMIN_PASSWORD` — a password you choose for the central dashboard at `/`
 4. **Apply**. The first build takes a few minutes. Your URL appears at the top, e.g.
    `https://biliran-central.onrender.com`.
 5. Check: open `https://<your-url>/health` → `{"ok":true,"supabase":true,"linkedIslands":[]}`.

@@ -21,3 +21,6 @@ services:
         sync: false
       - key: TICKET_SECRET
         sync: false
+      # Password for the central dashboard at "/" (choose your own)
+      - key: ADMIN_PASSWORD
+        sync: false

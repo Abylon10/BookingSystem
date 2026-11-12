@@ -1,0 +1,164 @@
+<!doctype html>
+<!--
+  central/dashboard/index.html
+  Central admin dashboard, served by central at "/". Data comes from
+  GET /api/admin/summary (login required). Behaviour in app.js, styles in style.css.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Biliran Booking — Central</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Login: shown until a valid session token exists -->
+<div id="login" class="login hidden">
+  <form id="login-form" class="glass login-card">
+    <div class="brand"><span class="logo">B</span><div><b>Biliran Booking</b><small>Central node</small></div></div>
+    <h2>Sign in</h2>
+    <p class="muted">Central admin access</p>
+    <input id="password" type="password" placeholder="Admin password" autocomplete="current-password" required>
+    <button class="btn primary" type="submit">Sign in</button>
+    <p id="login-error" class="error"></p>
+  </form>
+</div>
+
+<div class="layout">
+  <!-- Sidebar navigation -->
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">B</span><div><b>Biliran Booking</b><small>Central node</small></div></div>
+    <nav>
+      <a href="#top" class="active"><i data-icon="grid"></i>Dashboard</a>
+      <a href="#islands"><i data-icon="island"></i>Islands</a>
+      <a href="#arrivals"><i data-icon="calendar"></i>Bookings</a>
+      <a href="#activity"><i data-icon="pulse"></i>Activity</a>
+      <a href="#reports"><i data-icon="chart"></i>Reports</a>
+    </nav>
+    <p class="nav-title">Quick links</p>
+    <nav class="links">
+      <a href="/health" target="_blank"><i data-icon="heart"></i>Health check</a>
+      <a href="https://supabase.com/dashboard/project/xrpkpxxxancrogjddriw" target="_blank" rel="noopener"><i data-icon="db"></i>Supabase</a>
+      <a href="https://github.com/Abylon10/BookingSystem" target="_blank" rel="noopener"><i data-icon="code"></i>GitHub repo</a>
+    </nav>
+    <div class="side-foot">
+      <svg viewBox="0 0 120 50" aria-hidden="true"><path d="M5 40 Q25 10 45 40 Q60 20 75 40 Q95 5 115 40" fill="none" stroke="#6CA3A2" stroke-width="3"/><path d="M5 46 Q30 40 60 46 T115 46" fill="none" stroke="#307082" stroke-width="2"/></svg>
+      <small>Resorts · Tours · Islands</small>
+    </div>
+  </aside>
+
+  <main id="top">
+    <!-- Top bar: live status ticker + admin chip -->
+    <header class="topbar">
+      <div class="ticker glass">
+        <span class="badge"><i data-icon="bolt"></i>Live status</span>
+        <div class="ticker-items" id="ticker">Connecting…</div>
+      </div>
+      <div class="admin">
+        <span class="avatar">CA</span>
+        <div><b>Central Admin</b><small id="host"></small></div>
+        <button id="logout" class="btn ghost small" title="Sign out">Sign out</button>
+      </div>
+    </header>
+
+    <!-- Row 1: hero banner + greeting -->
+    <section class="row hero-row">
+      <div class="hero glass">
+        <svg class="hero-art" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12212E"/><stop offset=".55" stop-color="#307082"/><stop offset="1" stop-color="#EA9940"/></linearGradient>
+            <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#307082"/><stop offset="1" stop-color="#12212E"/></linearGradient>
+          </defs>
+          <rect width="800" height="260" fill="url(#sky)"/>
+          <circle cx="620" cy="170" r="46" fill="#EA9940" opacity=".85"/>
+          <path d="M380 190 L470 95 L520 130 L560 105 L660 190 Z" fill="#12212E" opacity=".85"/>
+          <path d="M560 195 Q600 150 650 165 Q700 140 760 195 Z" fill="#1b3446"/>
+          <path d="M300 200 Q340 170 380 185 Q410 175 440 200 Z" fill="#1b3446"/>
+          <rect y="190" width="800" height="70" fill="url(#sea)"/>
+          <path d="M0 210 Q40 204 80 210 T160 210 T240 210 T320 210 T400 210 T480 210 T560 210 T640 210 T720 210 T800 210" stroke="#6CA3A2" stroke-width="2" fill="none" opacity=".6"/>
+          <path d="M0 228 Q40 222 80 228 T160 228 T240 228 T320 228 T400 228 T480 228 T560 228 T640 228 T720 228 T800 228" stroke="#ECE7DC" stroke-width="1.5" fill="none" opacity=".25"/>
+        </svg>
+        <div class="hero-text">
+          <h1>Biliran Booking System</h1>
+          <p class="lead">Central node · Distributed resort and tour booking</p>
+          <p class="tags">3 islands <span>|</span> Parallel search <span>|</span> Works offline</p>
+        </div>
+      </div>
+      <div class="greet glass">
+        <p class="date"><i data-icon="calendar"></i><span id="date"></span></p>
+        <p class="hello" id="hello">Good day,</p>
+        <h3>Central Admin</h3>
+        <p class="muted">Biliran Booking · Central</p>
+        <div class="greet-foot">
+          <div><small>Island search</small><b id="fanout">—</b></div>
+          <div><small>Last sync</small><b id="lastsync">—</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 2: KPI cards -->
+    <section class="row kpis">
+      <div class="kpi glass k1"><span class="kicon"><i data-icon="island"></i></span><div><small>Islands online</small><b id="k-islands">—</b><em id="k-islands-sub"></em></div></div>
+      <div class="kpi glass k2"><span class="kicon"><i data-icon="ticket"></i></span><div><small>Bookings today</small><b id="k-bookings">—</b><em id="k-bookings-sub"></em></div></div>
+      <div class="kpi glass k3"><span class="kicon"><i data-icon="check"></i></span><div><small>Checked in today</small><b id="k-checkins">—</b><em>Guests confirmed at the desk</em></div></div>
+      <div class="kpi glass k4"><span class="kicon"><i data-icon="seat"></i></span><div><small>Online seats left today</small><b id="k-seats">—</b><em>Across all listings</em></div></div>
+    </section>
+
+    <!-- Rows 3-5: panels -->
+    <section class="grid">
+      <div class="panel glass islands" id="islands">
+        <div class="panel-head"><h3><i data-icon="island"></i>Island nodes</h3><span class="muted small" id="islands-note"></span></div>
+        <div id="island-cards" class="island-cards"></div>
+      </div>
+
+      <div class="panel glass donut">
+        <div class="panel-head"><h3><i data-icon="pie"></i>Bookings by island</h3><span class="chip">All time</span></div>
+        <div class="donut-wrap"><canvas id="c-island"></canvas><div class="donut-center"><small>Total</small><b id="donut-total">0</b></div></div>
+        <ul id="island-legend" class="legend"></ul>
+      </div>
+
+      <div class="panel glass activity" id="activity">
+        <div class="panel-head"><h3><i data-icon="pulse"></i>Recent activity</h3><span class="chip live">Live</span></div>
+        <ul id="feed" class="feed"></ul>
+      </div>
+
+      <div class="panel glass arrivals" id="arrivals">
+        <div class="panel-head"><h3><i data-icon="calendar"></i>Upcoming arrivals</h3><span class="chip">Online</span></div>
+        <ul id="arrival-list" class="arrival-list"></ul>
+      </div>
+
+      <div class="panel glass actions">
+        <div class="panel-head"><h3><i data-icon="bolt"></i>Quick actions</h3></div>
+        <div class="action-grid">
+          <button class="action" id="a-refresh"><span><i data-icon="refresh"></i></span>Refresh now</button>
+          <button class="action" id="a-speed"><span><i data-icon="gauge"></i></span>Speed test</button>
+          <a class="action" href="/api/listings" target="_blank"><span><i data-icon="search"></i></span>Live search</a>
+          <a class="action" href="/health" target="_blank"><span><i data-icon="heart"></i></span>Health</a>
+          <a class="action" href="https://supabase.com/dashboard/project/xrpkpxxxancrogjddriw/editor" target="_blank" rel="noopener"><span><i data-icon="db"></i></span>Database</a>
+          <a class="action" href="https://github.com/Abylon10/BookingSystem" target="_blank" rel="noopener"><span><i data-icon="code"></i></span>Source</a>
+        </div>
+        <p id="speed-result" class="speed muted small"></p>
+      </div>
+
+      <div class="panel glass trend" id="reports">
+        <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><span class="chip">Online vs walk-in</span></div>
+        <div class="chart-box"><canvas id="c-trend"></canvas></div>
+      </div>
+
+      <div class="panel glass bars">
+        <div class="panel-head"><h3><i data-icon="bars"></i>Bookings by listing</h3><span class="chip">All time</span></div>
+        <div class="chart-box tall"><canvas id="c-listing"></canvas></div>
+      </div>
+    </section>
+
+    <footer class="foot muted small">Updates every 10 seconds · Data: live island links + central's Supabase copies</footer>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
