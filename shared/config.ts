@@ -69,8 +69,8 @@ export interface SeedPackageItem {
 
 // What customers buy. pricing "per_guest" = price × guests; "per_package" =
 // one price for up to maxGuests. nights 0 = day trip (up to 12 hours).
-// extraDayPhp: fee for each day the guest keeps the services beyond the
-// package length (× guests when pricing is per_guest).
+// extraHourPhp: fee per hour the guest stays beyond the package time
+// (12 h for a day trip, 24 h per night); ₱50 when not set.
 export interface SeedPackage {
   id: string;
   name: string;
@@ -80,7 +80,8 @@ export interface SeedPackage {
   pricing: 'per_guest' | 'per_package';
   nights: number;
   maxGuests: number;
-  extraDayPhp: number;
+  extraHourPhp?: number;
+  funFact?: string;      // short "Did you know?" shown on the resort page
   items: SeedPackageItem[];
 }
 

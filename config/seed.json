@@ -15,8 +15,8 @@
         {
           "id": "biliran-lagundi-2d1n",
           "name": "Chamorita Beach Resort 2D1N + Falls",
-          "location": "Chamorita Beach Resort, Biliran",
-          "description": "One night at Chamorita Beach Resort: swimming pools, beachfront cottages and sunset over the water, plus the falls trek and van transfer.",
+          "location": "Chamorita Beach Resort, Biliran Island",
+          "description": "Stay a night at Chamorita Beach Resort: swimming pools with a water slide, beachfront cottages and huts on stilts over the water, where the sunsets light up the sea. Includes the trek to Tinago and Ulan-Ulan Falls with a van transfer.",
           "pricePhp": 4200,
           "pricing": "per_package",
           "nights": 1,
@@ -26,7 +26,8 @@
             { "service": "biliran-falls-trek", "qty": 1, "perGuest": true },
             { "service": "biliran-van", "qty": 1, "perGuest": true }
           ],
-          "extraDayPhp": 2800
+          "extraHourPhp": 50,
+          "funFact": "Biliran became its own province only in 1992; before that it was part of Leyte. Today the island is linked to mainland Leyte by the Biliran Bridge."
         }
       ]
     },
@@ -43,8 +44,8 @@
         {
           "id": "maripipi-sambawan-overnight",
           "name": "Sambawan Overnight",
-          "location": "Maripipi, Biliran",
-          "description": "A night in a native cottage below Maripipi volcano with island hopping and boat transfers.",
+          "location": "Sambawan Islets, Maripipi, Biliran",
+          "description": "Spend a night in a native cottage on the Sambawan islets: white sand between small green islands, clear water for snorkeling, and a hilltop viewpoint. Includes island hopping and the boat transfers.",
           "pricePhp": 3500,
           "pricing": "per_package",
           "nights": 1,
@@ -54,7 +55,8 @@
             { "service": "maripipi-sambawan-hopping", "qty": 1, "perGuest": true },
             { "service": "maripipi-boat", "qty": 1, "perGuest": true }
           ],
-          "extraDayPhp": 2500
+          "extraHourPhp": 50,
+          "funFact": "Sambawan is a chain of small islets joined by strips of white sand. From its hilltop viewpoint you can see the cone of Maripipi, a volcanic island."
         }
       ]
     },
@@ -71,8 +73,8 @@
         {
           "id": "higatangan-escape-2d1n",
           "name": "Higatangan Escape 2D1N",
-          "location": "Higatangan, Naval, Biliran",
-          "description": "One night at the Sandbar Inn with the rock formations tour and pump-boat transfers.",
+          "location": "Higatangan Island, Naval, Biliran",
+          "description": "A night at the Sandbar Inn, steps from the water, with the limestone rock formations tour, the island viewpoint, and the pump-boat crossing from Naval.",
           "pricePhp": 3200,
           "pricing": "per_package",
           "nights": 1,
@@ -82,7 +84,8 @@
             { "service": "higatangan-rock-tour", "qty": 1, "perGuest": true },
             { "service": "higatangan-pumpboat", "qty": 1, "perGuest": true }
           ],
-          "extraDayPhp": 2300
+          "extraHourPhp": 50,
+          "funFact": "Higatangan's long white sandbar changes shape with the tide, and the island belongs to Naval, the capital of Biliran province."
         }
       ]
     }

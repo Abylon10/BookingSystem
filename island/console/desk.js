@@ -68,8 +68,8 @@ for (const b of document.querySelectorAll('#desk-tabs button')) b.addEventListen
 // ---------------------------------------------------------------------------
 
 let state = null;
-async function loadState(day = todayStr(), guests = 1, extraDays = 0) {
-  state = await api(`/api/state?day=${day}&guests=${guests}&extraDays=${extraDays}`);
+async function loadState(day = todayStr(), guests = 1, extraHours = 0) {
+  state = await api(`/api/state?day=${day}&guests=${guests}&extraHours=${extraHours}`);
   $('island-name').textContent = state.island.name;
   document.title = `${state.island.name} · Front desk`;
   const link = { lan: 'LAN', connected: 'cloud link', polling: 'cloud, HTTPS polling', connecting: 'reconnecting…' }[state.centralLink] ?? '';
@@ -179,7 +179,7 @@ $('modal').addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
 // ---------------------------------------------------------------------------
-// Walk-in: package (+ extra days) or build your own, with a live price
+// Walk-in: package (+ extra hours) or build your own, with a live price
 // ---------------------------------------------------------------------------
 
 let walkMode = 'package';
@@ -202,7 +202,7 @@ async function loadWalkin() {
 }
 function walkinRequest() {
   const base = { day: $('w-day').value, guests: Number($('w-guests').value) || 1 };
-  if (walkMode === 'package') return { ...base, packageId: $('w-package').value, extraDays: Number($('w-extra').value) || 0 };
+  if (walkMode === 'package') return { ...base, packageId: $('w-package').value, extraHours: Number($('w-extra').value) || 0 };
   const items = [...document.querySelectorAll('#w-services input[type=checkbox]:checked')].map((c) => ({
     serviceId: c.dataset.svc, qty: Number(document.querySelector(`#w-services input[type=number][data-svc="${c.dataset.svc}"]`).value) || 1,
   }));

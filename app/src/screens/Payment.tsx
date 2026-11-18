@@ -87,7 +87,8 @@ export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPai
               ))}
             </View>
             <ErrorBox message={error} />
-            <Button label={`Pay ${peso(booking.total_php)}`} onPress={() => pay(false)} busy={busy === 'pay'} disabled={!!busy} variant="accent" icon="shield-checkmark-outline" />
+            {/* ₱0 bookings (test prices) are confirmed without a charge */}
+            <Button label={booking.total_php > 0 ? `Pay ${peso(booking.total_php)}` : 'Confirm free booking (₱0)'} onPress={() => pay(false)} busy={busy === 'pay'} disabled={!!busy} variant="accent" icon="shield-checkmark-outline" />
             {/* Demo button for the class: shows the saga's compensating step */}
             <Button label="Simulate failed payment" onPress={() => pay(true)} busy={busy === 'fail'} disabled={!!busy} variant="ghost" />
             <Text style={st.hint}>Demo only: no real payment is made.</Text>

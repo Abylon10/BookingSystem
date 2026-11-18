@@ -45,7 +45,9 @@ export function openDb(islandId: string): Db {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, description TEXT NOT NULL,
       price_php INTEGER NOT NULL, pricing TEXT NOT NULL CHECK (pricing IN ('per_guest', 'per_package')),
       nights INTEGER NOT NULL, max_guests INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1,
-      extra_day_php INTEGER NOT NULL DEFAULT 0
+      extra_day_php INTEGER NOT NULL DEFAULT 0,
+      extra_hour_php INTEGER NOT NULL DEFAULT 50,
+      fun_fact TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS package_items (
@@ -74,8 +76,8 @@ export function openDb(islandId: string): Db {
     -- Statuses: HELD (online, waiting for payment) -> CONFIRMED -> CHECKED_IN;
     -- or RELEASED / EXPIRED (hold undone), CANCELLED (units returned, refund).
     -- package_id is 'custom' for build-your-own trips (package_name says what).
-    -- days = how many days the services are used; extra_days = days beyond
-    -- the package length (each one adds the package's extra-day fee).
+    -- days = how many days the services are used; extra_hours = time bought
+    -- after the package time (₱ per hour); extra_days = the days that adds.
     CREATE TABLE IF NOT EXISTS bookings (
       id TEXT PRIMARY KEY,
       reference TEXT NOT NULL UNIQUE,
@@ -88,7 +90,7 @@ export function openDb(islandId: string): Db {
       total_php INTEGER NOT NULL,
       status TEXT NOT NULL,
       package_name TEXT NOT NULL DEFAULT '', end_day TEXT NOT NULL DEFAULT '',
-      days INTEGER NOT NULL DEFAULT 1, extra_days INTEGER NOT NULL DEFAULT 0,
+      days INTEGER NOT NULL DEFAULT 1, extra_days INTEGER NOT NULL DEFAULT 0, extra_hours INTEGER NOT NULL DEFAULT 0,
       refund_php INTEGER NOT NULL DEFAULT 0,
       hold_expires_at INTEGER,
       created_by TEXT NOT NULL DEFAULT 'online',
@@ -130,6 +132,9 @@ function upgrade(db: Db): void {
     ['services', 'unit', "TEXT NOT NULL DEFAULT 'person'"],
     ['services', 'active', 'INTEGER NOT NULL DEFAULT 1'],
     ['packages', 'extra_day_php', 'INTEGER NOT NULL DEFAULT 0'],
+    ['packages', 'extra_hour_php', 'INTEGER NOT NULL DEFAULT 50'],
+    ['packages', 'fun_fact', "TEXT NOT NULL DEFAULT ''"],
+    ['bookings', 'extra_hours', 'INTEGER NOT NULL DEFAULT 0'],
     ['bookings', 'package_name', "TEXT NOT NULL DEFAULT ''"],
     ['bookings', 'end_day', "TEXT NOT NULL DEFAULT ''"],
     ['bookings', 'days', 'INTEGER NOT NULL DEFAULT 1'],
@@ -154,8 +159,7 @@ function upgrade(db: Db): void {
 export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
   const addService = db.prepare('INSERT OR IGNORE INTO services (id, kind, name, capacity, price_php, unit) VALUES (?, ?, ?, ?, ?, ?)');
   const fillPrice = db.prepare('UPDATE services SET price_php = ?, unit = ? WHERE id = ? AND price_php = 0');
-  const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_day_php) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  const fillExtra = db.prepare('UPDATE packages SET extra_day_php = ? WHERE id = ? AND extra_day_php = 0');
+  const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_hour_php, fun_fact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const addItem = db.prepare('INSERT OR IGNORE INTO package_items VALUES (?, ?, ?, ?)');
   transaction(db, () => {
     for (const s of island.services) {
@@ -163,16 +167,27 @@ export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
       fillPrice.run(s.pricePhp, s.unit, s.id);
     }
     for (const p of island.packages) {
-      addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests, p.extraDayPhp);
-      fillExtra.run(p.extraDayPhp, p.id);
+      addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests, p.extraHourPhp ?? 50, p.funFact ?? '');
       for (const it of p.items) addItem.run(p.id, it.service, it.qty, it.perGuest ? 1 : 0);
     }
   });
   renameOld(db);
+  oneTime(db, 'resort-texts-2026-11', () => {
+    // Fuller descriptions, locations and a "Did you know?" for the three
+    // resorts (from seed.json); later edits by the island admin are kept.
+    const set = db.prepare('UPDATE packages SET location = ?, description = ?, fun_fact = ? WHERE id = ?');
+    for (const p of island.packages) if (p.funFact) set.run(p.location, p.description, p.funFact, p.id);
+  });
   oneTime(db, 'retire-day-trips-2026-11', () => {
     // Only the three resort stays are sold now; the day trips are taken off
     // sale (kept in the database so their past bookings keep their names).
     db.prepare("UPDATE packages SET active = 0 WHERE id IN ('biliran-falls-day', 'maripipi-sambawan-day', 'higatangan-sandbar-day')").run();
+  });
+  oneTime(db, 'test-prices-zero-2026-11', () => {
+    // Booking test: every package, service and extra-hour fee starts at ₱0.
+    // Runs once, so prices the island admin sets afterwards are kept.
+    db.prepare('UPDATE packages SET price_php = 0, extra_hour_php = 0').run();
+    db.prepare('UPDATE services SET price_php = 0').run();
   });
   extendInventory(db, seed.inventoryDays);
 }

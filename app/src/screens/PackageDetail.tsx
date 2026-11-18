@@ -4,9 +4,9 @@
  * A resort / tour page: big picture (with a gallery when there are several
  * photos), name, place and information. Then the guest chooses how to book:
  *
- *  - Package: the ready package. Guests, the reservation timeline on a
- *    calendar coloured by availability, extra days (each adds the extra-day
- *    fee). A switched-off service shows shaded with a red "unavailable" note.
+ *  - Package: the ready package. Guests, the arrival day on a calendar
+ *    coloured by availability, and extra hours after the package time
+ *    (12 h for a day trip, 24 h per night), each adding the hourly fee. A switched-off service shows shaded with a red "unavailable" note.
  *  - Build your own: a checklist of THIS island's services and activities
  *    (live from the island, so services an island admin adds appear at once).
  *    Tick what you want, set quantities and dates; the price is each
@@ -40,7 +40,7 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   // Shared choices: guests and first day.
   const [guests, setGuests] = useState(Math.min(2, initial.max_guests));
   const [day, setDay] = useState(initial.day);
-  // Package: extra days. Build your own: last day and quantities (0 = not ticked).
+  // Package: extra hours. Build your own: last day and quantities (0 = not ticked).
   const [extra, setExtra] = useState(0);
   const [customEnd, setCustomEnd] = useState(initial.day);
   const [qty, setQty] = useState<Record<string, number>>({});
@@ -56,9 +56,9 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   const [photoIndex, setPhotoIndex] = useState(0);
 
   // Package length in calendar days: a day trip = 1 day (up to 12 h), a
-  // 2D1N = 2 days. The chosen end day decides the extra days.
+  // 2D1N = 2 days. Extra hours can add days (the island says which).
   const baseDays = pkg.nights + 1;
-  const pkgEnd = addDays(day, baseDays - 1 + extra);
+  const pkgEnd = pkg.day === day && pkg.end_day ? pkg.end_day : addDays(day, baseDays - 1);
   const cEnd = customEnd < day ? day : customEnd; // never before the first day
   const customDays = daysBetween(day, cEnd) + 1;
   const endDay = mode === 'package' ? pkgEnd : cEnd;
@@ -99,8 +99,7 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   // Calendar change: first and last day.
   function onRange(start: string, end: string) {
     setDay(start);
-    if (mode === 'package') setExtra(Math.max(0, daysBetween(start, end) - (baseDays - 1)));
-    else setCustomEnd(end);
+    if (mode === 'custom') setCustomEnd(end);
   }
 
   // Tick / untick a service: per-person ones start at the guest count.
@@ -109,7 +108,7 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   const offIds = new Set(pkg.unavailable_services.map((s) => s.id));
   const perGuest = pkg.pricing === 'per_guest';
   const total = mode === 'package' ? pkg.total_php : customTotal;
-  const days = mode === 'package' ? baseDays + extra : customDays;
+  const days = mode === 'package' ? (pkg.days || baseDays) : customDays;
   const blocked = mode === 'package'
     ? !pkg.available || !!error || guests > pkg.max_guests
     : !chosen.length || customTotal === null || !!error;
@@ -117,7 +116,7 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   // The trip handed to the guest form.
   const trip: Trip = mode === 'package'
     ? { kind: 'package', title: pkg.name, islandId: pkg.island_id, islandName: pkg.island_name, imageId: pkg.id,
-      packageId: pkg.id, extraDays: extra, day, endDay, days, guests, total: pkg.total_php }
+      packageId: pkg.id, extraHours: extra, day, endDay, days, guests, total: pkg.total_php }
     : { kind: 'custom', title: `Custom trip · ${pkg.island_name}`, islandId: pkg.island_id, islandName: pkg.island_name, imageId: pkg.id,
       items: chosen.map((s) => ({ serviceId: s.id, qty: qty[s.id], name: s.name })), day, endDay, days, guests, total: customTotal ?? 0 };
 
@@ -156,11 +155,29 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
             <Text style={st.placeText}>{pkg.location} · {pkg.island_name}</Text>
           </View>
 
-          {/* Information with "Read more" */}
-          <Text style={st.desc} numberOfLines={more ? undefined : 3}>{pkg.description}</Text>
-          {pkg.description.length > 120 && (
+          {/* About the resort, with "Read more" */}
+          <Text style={st.h}>About</Text>
+          <Text style={st.desc} numberOfLines={more ? undefined : 4}>{pkg.description}</Text>
+          {pkg.description.length > 160 && (
             <Pressable onPress={() => setMore(!more)}><Text style={st.more}>{more ? 'Show less' : 'Read more'}</Text></Pressable>
           )}
+
+          {/* Location */}
+          <View style={st.locCard}>
+            <View style={st.locIcon}><Ionicons name="location" size={18} color="#fff" /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.locTitle}>{pkg.location}</Text>
+              <Text style={st.locSub}>{pkg.island_name} · Biliran Province, Philippines</Text>
+            </View>
+          </View>
+
+          {/* Did you know? */}
+          {pkg.fun_fact ? (
+            <View style={st.fact2}>
+              <Text style={st.factTitle}>💡 Did you know?</Text>
+              <Text style={st.factBody}>{pkg.fun_fact}</Text>
+            </View>
+          ) : null}
 
           {/* The choice: ready package, or build your own from the checklist */}
           <View style={st.seg}>
@@ -234,23 +251,39 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
             <Stepper value={guests} min={1} max={mode === 'package' ? pkg.max_guests : 20} onChange={setGuests} />
           </View>
 
-          {/* Reservation timeline (calendar) */}
-          <Text style={st.h}>Reservation dates</Text>
+          {/* Arrival day (package) or first and last day (build your own) */}
+          <Text style={st.h}>{mode === 'package' ? 'Arrival day' : 'Reservation dates'}</Text>
           <Pressable onPress={() => setCalendar(true)} style={st.dateRow}>
             <Ionicons name="calendar-outline" size={20} color={colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={st.dateText}>{tripDates(day, daysBetween(day, endDay))}</Text>
               <Text style={st.dateSub}>
                 {days} day{days > 1 ? 's' : ''} of service
-                {mode === 'package' && extra ? ` · ${extra} extra (+${peso(extra * pkg.extra_day_php * (perGuest ? guests : 1))})` : ''}
+                {mode === 'package' ? ` · ${pkg.nights ? `${pkg.nights * 24} h` : '12 h'} included` : ''}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.muted} />
           </Pressable>
+          {/* Extra hours after the package time (package only) */}
+          {mode === 'package' && (
+            <>
+              <Text style={st.h}>Stay longer</Text>
+              <View style={st.guestRow}>
+                <Text style={st.hint}>Extra hours after the {pkg.nights ? `${pkg.nights * 24}-hour stay` : '12-hour day'} · {peso(pkg.extra_hour_php ?? 50)} per hour</Text>
+                <Stepper value={extra} min={0} max={72} onChange={setExtra} />
+              </View>
+              <View style={st.quick}>
+                {[0, 2, 4, 6, 12].map((h) => (
+                  <Pressable key={h} onPress={() => setExtra(h)} style={[st.quickBtn, extra === h && st.quickOn]}>
+                    <Text style={[st.quickText, extra === h && { color: '#fff' }]}>{h ? `+${h} h` : 'None'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {extra > 0 && <Text style={st.extraLine}>+{extra} hour{extra > 1 ? 's' : ''} = {peso(extra * (pkg.extra_hour_php ?? 50))}{pkg.end_day && pkg.end_day !== addDays(day, pkg.nights) ? ` · runs into ${tripDates(pkg.end_day, 0)}` : ''}</Text>}
+            </>
+          )}
           <Text style={st.feeNote}>
-            {mode === 'package'
-              ? `Want to stay longer? Each extra day adds ${peso(pkg.extra_day_php)}${perGuest ? ' per guest' : ''}. `
-              : 'Each chosen service is reserved for every day of your stay. '}
+            {mode === 'custom' ? 'Each chosen service is reserved for every day of your stay. ' : ''}
             Cancel before your trip date for a full refund (half on the day itself).
           </Text>
 
@@ -276,7 +309,8 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
       <RangeSheet
         open={calendar} onClose={() => setCalendar(false)} start={day} end={endDay} min={TODAY} max={LAST_DAY}
         minDays={mode === 'package' ? baseDays : 1} statuses={mode === 'package' ? statuses : undefined} onChange={onRange}
-        summary={`${tripDates(day, daysBetween(day, endDay))} · ${days} day(s)${mode === 'package' && extra ? ` · ${extra} extra` : ''}`}
+        single={mode === 'package'} title={mode === 'package' ? 'Arrival day' : 'Reservation dates'}
+        summary={`${tripDates(day, daysBetween(day, endDay))} · ${days} day(s)${mode === 'package' && extra ? ` · +${extra} h` : ''}`}
       />
     </View>
   );
@@ -345,6 +379,18 @@ const st = themed(() => StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.line, borderRadius: radius.sm, padding: 14 },
   dateText: { color: colors.ink, fontWeight: '700' },
   dateSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  locCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.skySoft, borderRadius: radius.md, padding: 12, marginTop: space.sm },
+  locIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  locTitle: { color: colors.ink, fontWeight: '700' },
+  locSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  fact2: { backgroundColor: '#FFF4D6', borderRadius: radius.md, padding: 14, borderLeftWidth: 4, borderLeftColor: colors.accent, marginTop: space.sm, gap: 4 },
+  factTitle: { color: '#013C58', fontWeight: '800' },
+  factBody: { color: '#013C58', lineHeight: 20 },
+  quick: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  quickBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card },
+  quickOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  quickText: { color: colors.ink, fontWeight: '700', fontSize: 13 },
+  extraLine: { color: colors.primary, fontWeight: '700', marginTop: 6 },
   feeNote: { color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: space.sm },
 
   bar: {

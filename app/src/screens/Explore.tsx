@@ -1,10 +1,11 @@
 /**
  * app/src/screens/Explore.tsx
  *
- * Home screen. Pick a date (calendar sheet), filter by island or search,
- * then browse: day trips as big picture cards and island stays as a list.
- * Tapping one opens its page, where the guest picks the package or builds
- * their own trip from that island's services checklist, and the guests.
+ * Home screen. Filter by island or search, then browse the resorts (day
+ * trips as big picture cards, stays as a list; today's availability).
+ * Tapping one opens its page, where the guest picks the arrival day, the
+ * guests, and the package or their own trip from the services checklist.
+ * The header has the Log in button (Google) while signed out.
  *
  * Central asks the three islands IN PARALLEL; island chips show a green/red
  * dot for online/offline. An offline island's packages are not shown,
@@ -13,44 +14,40 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { searchPackages, type Package, type SearchResult } from '../api';
+import type { Account } from '../auth';
 import { HERO_PHOTOS, PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space, themed } from '../theme';
-import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle } from '../ui';
+import { ErrorBox, Ionicons, isoDay, Pills, SectionTitle } from '../ui';
 
-// How far ahead guests can book (matches the islands' inventoryDays: 60).
-const TODAY = isoDay(new Date());
-const LAST_DAY = addDays(TODAY, 59);
-
-export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
-  day: string;
-  onDay: (day: string) => void;
+export function Explore({ onOpen, theme, onToggleTheme, account, onLogin }: {
   onOpen: (p: Package) => void;
+  account: Account | null;     // signed-in guest, or null
+  onLogin: () => void;         // opens the sign-in screen
   theme: 'light' | 'dark';
   onToggleTheme: () => void;   // day / night switch
 }) {
-  // Search result, error text, loading flag, filters, calendar sheet.
+  // Search result, error text, loading flag, filters.
   const [data, setData] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [island, setIsland] = useState('all');
   const [query, setQuery] = useState('');
-  const [calendar, setCalendar] = useState(false);
 
-  // Runs the search for the current date (1 guest; the guest count is
-  // chosen on the package screen).
+  // Runs the search for today (1 guest). The arrival day and the guest
+  // count are chosen on the resort page.
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await searchPackages(day, 1));
+      setData(await searchPackages(isoDay(new Date()), 1));
       setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [day]);
+  }, []);
 
-  // Search again whenever the date changes.
+  // Search when the screen opens.
   useEffect(() => {
     load();
   }, [load]);
@@ -77,8 +74,8 @@ export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={load} tintColor={colors.primary} />}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Header: Biliran photo with the Resortify logo, location and greeting,
-          then the search box and arrival date */}
+      {/* Header: Biliran photo with the Resortify logo, Log in (or the
+          signed-in guest), day/night, greeting and the search box */}
       <View style={st.header}>
         <Image source={HERO_PHOTOS.home} style={st.headerPhoto} resizeMode="cover" />
         <View style={st.headerShade} />
@@ -88,10 +85,16 @@ export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
             <Text style={st.brandName}>Resortify</Text>
           </View>
           <View style={st.topRight}>
-            <View style={st.locPill}>
-              <Ionicons name="location" size={14} color="#00537A" />
-              <Text style={st.locText}>Biliran Province</Text>
-            </View>
+            {account ? (
+              // Signed in: first letter of the name.
+              <View style={st.avatar}><Text style={st.avatarText}>{account.name.slice(0, 1).toUpperCase()}</Text></View>
+            ) : (
+              // Signed out: Log in (Google).
+              <Pressable onPress={onLogin} style={st.loginBtn} hitSlop={6}>
+                <Ionicons name="logo-google" size={14} color="#013C58" />
+                <Text style={st.locText}>Log in</Text>
+              </Pressable>
+            )}
             {/* Day / night */}
             <Pressable onPress={onToggleTheme} style={st.themeBtn} hitSlop={8} accessibilityLabel={theme === 'dark' ? 'Switch to day' : 'Switch to night'}>
               <Ionicons name={theme === 'dark' ? 'sunny' : 'moon'} size={17} color="#013C58" />
@@ -105,14 +108,10 @@ export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
           <TextInput value={query} onChangeText={setQuery} placeholder="Search falls, islands, stays…" placeholderTextColor="#8DA3AE" style={st.searchInput} />
           {query ? <Pressable onPress={() => setQuery('')} hitSlop={8}><Ionicons name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
         </View>
-        <Pressable onPress={() => setCalendar(true)} style={st.dateBtn}>
-          <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={st.tripLabel}>Arrival date</Text>
-            <Text style={st.tripValue}>{day === TODAY ? 'Today' : prettyDay(day)}</Text>
-          </View>
-          <Ionicons name="chevron-down" size={18} color={colors.muted} />
-        </Pressable>
+        <View style={st.locRow}>
+          <Ionicons name="location" size={14} color="#E3F6FC" />
+          <Text style={st.locRowText}>Biliran Province · 3 island resorts</Text>
+        </View>
       </View>
 
       <View style={st.body}>
@@ -169,7 +168,6 @@ export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
       </View>
 
       {/* Calendar sheet */}
-      <DateSheet open={calendar} onClose={() => setCalendar(false)} value={day} min={TODAY} max={LAST_DAY} onChange={onDay} />
     </ScrollView>
   );
 }
@@ -226,15 +224,16 @@ const st = themed(() => StyleSheet.create({
   brandName: { color: colors.onLight, fontWeight: '800', fontSize: 15, letterSpacing: 0.5 },
   topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   themeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
-  locPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 7 },
   locText: { color: colors.onLight, fontWeight: '700', fontSize: 12 },
   hello: { color: '#E3F6FC', fontSize: 22 },
   helloBold: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: -4 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 16, height: 52, marginTop: space.md, ...shadow, shadowOpacity: 0.07 },
   searchInput: { flex: 1, fontSize: 15, color: colors.ink },
-  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 16, height: 54, marginTop: space.sm },
-  tripLabel: { color: colors.muted, fontSize: 11 },
-  tripValue: { color: colors.ink, fontWeight: '700', fontSize: 15 },
+  loginBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 8 },
+  avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.sun, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#013C58', fontWeight: '800' },
+  locRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
+  locRowText: { color: '#E3F6FC', fontWeight: '600', fontSize: 13 },
 
   body: { padding: space.md, gap: space.md },
 

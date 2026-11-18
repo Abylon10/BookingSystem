@@ -88,7 +88,7 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
           <InfoRow label="Package" value={b.package_name} />
           <InfoRow label="Where" value={b.location} />
           <InfoRow label="Dates" value={tripDates(b.day, b.end_day ? daysBetween(b.day, b.end_day) : b.nights)} />
-          <InfoRow label="Length" value={`${b.days ?? 1} day${(b.days ?? 1) > 1 ? 's' : ''}${b.extra_days ? ` (${b.extra_days} extra)` : ''}`} />
+          <InfoRow label="Length" value={`${b.days ?? 1} day${(b.days ?? 1) > 1 ? 's' : ''}${b.extra_hours ? ` (+${b.extra_hours} extra hour${b.extra_hours > 1 ? 's' : ''})` : ''}`} />
           {b.services?.length ? <InfoRow label="Services" value={b.services.map((s) => `${s.name} × ${s.qty}`).join('\n')} /> : null}
           <InfoRow label="Guests" value={String(b.guests)} />
           <InfoRow label="E-mail" value={b.email} />

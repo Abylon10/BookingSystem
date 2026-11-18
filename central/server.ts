@@ -163,10 +163,10 @@ type PackageOut = Record<string, any> & { id: string };
 // services checklist for build-your-own trips), and measures how long it
 // took. Never throws: an unreachable or partitioned island is reported as
 // "offline" so the search can still return everything else.
-async function fetchIsland(island: Island, day: string, guests: number, extraDays = 0, days = 1) {
+async function fetchIsland(island: Island, day: string, guests: number, extraHours = 0, days = 1) {
   const started = performance.now();
   try {
-    const reply = await callIsland<{ packages: PackageOut[]; services?: PackageOut[] }>(island, 'SearchAvailability', { day, guests, extraDays, days });
+    const reply = await callIsland<{ packages: PackageOut[]; services?: PackageOut[] }>(island, 'SearchAvailability', { day, guests, extraHours, days });
     const name = island.name;
     return {
       id: island.id, status: 'online' as const,
@@ -188,14 +188,14 @@ async function fetchIsland(island: Island, day: string, guests: number, extraDay
 // The sequential mode exists only so the benchmark can compare the two.
 // An offline island's packages are left out: only the owning island can
 // confirm a booking, so central never sells what it cannot confirm.
-async function search(mode: 'parallel' | 'sequential', day: string, guests = 1, extraDays = 0, days = 1) {
+async function search(mode: 'parallel' | 'sequential', day: string, guests = 1, extraHours = 0, days = 1) {
   const started = performance.now();
   let results: Awaited<ReturnType<typeof fetchIsland>>[];
   if (mode === 'parallel') {
-    results = await Promise.all(islands.map((i) => fetchIsland(i, day, guests, extraDays, days)));
+    results = await Promise.all(islands.map((i) => fetchIsland(i, day, guests, extraHours, days)));
   } else {
     results = [];
-    for (const island of islands) results.push(await fetchIsland(island, day, guests, extraDays, days));
+    for (const island of islands) results.push(await fetchIsland(island, day, guests, extraHours, days));
   }
   const fanoutMs = Math.round(performance.now() - started);
   return {
@@ -275,14 +275,15 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&extraDays=1][&days=2][&mode=sequential]
+// Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&extraHours=3][&days=2][&mode=sequential]
 const searchRoute: express.RequestHandler = async (req, res) => {
   const mode = req.query.mode === 'sequential' ? 'sequential' : 'parallel';
   const day = (req.query.day as string) || today();
   const guests = Math.max(1, Number(req.query.guests) || 1);
-  const extraDays = Math.max(0, Number(req.query.extraDays) || 0);
+  // extraHours (or extraDays = 24 h each, from older apps).
+  const extraHours = Math.max(0, Number(req.query.extraHours ?? (Number(req.query.extraDays) || 0) * 24) || 0);
   const days = Math.max(1, Number(req.query.days) || 1);
-  res.json(await search(mode, day, guests, extraDays, days));
+  res.json(await search(mode, day, guests, extraHours, days));
 };
 app.get('/api/packages', searchRoute);
 app.get('/api/listings', searchRoute); // older name, same result
@@ -306,7 +307,7 @@ app.get('/api/packages/:id/calendar', async (req, res) => {
   }
 });
 
-// Price and end date before booking: POST /api/quote { packageId, extraDays }
+// Price and end date before booking: POST /api/quote { packageId, extraHours }
 // or { islandId, items: [{serviceId, qty}], days } (build-your-own).
 app.post('/api/quote', async (req, res) => {
   const b = req.body ?? {};
@@ -345,9 +346,9 @@ app.post('/api/bookings', async (req, res) => {
   const island = islandFor(b);
   if (!island) return res.status(404).json({ error: 'Unknown package or island' });
   try {
-    // A package (+ extraDays), or build-your-own: items + days on islandId.
+    // A package (+ extraHours), or build-your-own: items + days on islandId.
     const booking = await callIsland(island, 'HoldBooking', {
-      requestId, packageId: b.packageId, extraDays: b.extraDays, items: b.items, days: b.days,
+      requestId, packageId: b.packageId, extraHours: b.extraHours, extraDays: b.extraDays, items: b.items, days: b.days,
       day: b.day, guests: b.guests, guestName: b.guestName,
       email: b.email, phone: b.phone, idType: b.idType, idLast4: b.idLast4,
     }, 8000);

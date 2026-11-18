@@ -70,6 +70,13 @@ export async function signIn(provider: 'google' | 'facebook' = 'google') {
 
 export const signOut = () => supabase.auth.signOut();
 
+// True when a saved sign-in exists on this phone (checked once at start, so
+// the app can skip the sign-in screen for guests who already signed in).
+export async function hasSavedSession(): Promise<boolean> {
+  if (!authConfigured) return false;
+  try { return Boolean((await supabase.auth.getSession()).data.session); } catch { return false; }
+}
+
 // The signed-in guest as a React hook: null while signed out.
 export function useAccount() {
   const [session, setSession] = useState<Session | null>(null);

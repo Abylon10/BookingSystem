@@ -87,8 +87,8 @@ document.addEventListener('click', (e) => { const go = e.target.closest('[data-g
 
 let state = null; // last /api/state (packages, services, link)
 
-async function loadState(day = todayStr(), guests = 1, extraDays = 0) {
-  state = await api(`/api/state?day=${day}&guests=${guests}&extraDays=${extraDays}`);
+async function loadState(day = todayStr(), guests = 1, extraHours = 0) {
+  state = await api(`/api/state?day=${day}&guests=${guests}&extraHours=${extraHours}`);
   $('island-name').textContent = state.island.name;
   document.title = `${state.island.name} · ${isAdmin ? 'Admin' : 'Front desk'}`;
   $('partition').checked = state.partitioned;
@@ -196,7 +196,7 @@ function arrivalRow(b) {
     <td><div class="guest"><span class="avatar">${esc(initials(b.guest_name))}</span>${esc(b.guest_name)}</div></td>
     <td class="ref">${esc(b.reference)}</td>
     <td>${esc(b.package_name)}</td>
-    <td>${fmtRange(b)}${b.extra_days ? `<div class="small">+${b.extra_days} extra day(s)</div>` : ''}</td>
+    <td>${fmtRange(b)}${b.extra_hours ? `<div class="small">+${b.extra_hours} extra hour(s)</div>` : ''}</td>
     <td>${b.guests}</td>
     <td class="idhint">${esc(b.id_type)} ·· <b>${esc(b.id_last4)}</b></td>
     <td><span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
@@ -284,7 +284,7 @@ function openDetails(b) {
     <dl class="dl">
       <dt>Status</dt><dd><span class="badge ${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></dd>
       <dt>Booking</dt><dd>${esc(b.package_name)}</dd>
-      <dt>Dates</dt><dd>${fmtRange(b)} · ${b.days} day(s)${b.extra_days ? ` (+${b.extra_days} extra)` : ''}</dd>
+      <dt>Dates</dt><dd>${fmtRange(b)} · ${b.days} day(s)${b.extra_hours ? ` (+${b.extra_hours} extra hour(s))` : ''}</dd>
       <dt>Services</dt><dd>${(b.services ?? []).map((s) => `${esc(s.name)} × ${s.qty}`).join('<br>')}</dd>
       <dt>Guests</dt><dd>${b.guests}</dd>
       <dt>Booked</dt><dd>${b.source === 'ONLINE' ? 'Online (app)' : `Walk-in (desk)`}</dd>
@@ -297,7 +297,7 @@ function openDetails(b) {
 }
 
 // ---------------------------------------------------------------------------
-// Walk-in: package (+ extra days) or build-your-own, with a live price
+// Walk-in: package (+ extra hours) or build-your-own, with a live price
 // ---------------------------------------------------------------------------
 
 let walkMode = 'package';
@@ -324,7 +324,7 @@ async function loadWalkin() {
 // The request built from the form (shared by the price quote and booking).
 function walkinRequest() {
   const base = { day: $('w-day').value, guests: Number($('w-guests').value) || 1 };
-  if (walkMode === 'package') return { ...base, packageId: $('w-package').value, extraDays: Number($('w-extra').value) || 0 };
+  if (walkMode === 'package') return { ...base, packageId: $('w-package').value, extraHours: Number($('w-extra').value) || 0 };
   const items = [...document.querySelectorAll('#w-services input[type=checkbox]:checked')].map((c) => ({
     serviceId: c.dataset.svc, qty: Number(document.querySelector(`#w-services input[type=number][data-svc="${c.dataset.svc}"]`).value) || 1,
   }));
@@ -464,7 +464,7 @@ async function loadCatalog() {
   $('pkg-list').innerHTML = catalog.packages.map((p) => `<tr>
     <td><b>${esc(p.name)}</b><div class="small muted">${esc(p.location)}</div></td>
     <td>${p.nights ? `${p.nights} night(s)` : 'Day trip'}</td><td>${peso(p.price_php)} ${p.pricing === 'per_guest' ? '/ guest' : '/ package'}</td>
-    <td>${peso(p.extra_day_php)}</td><td>${p.max_guests}</td>
+    <td>${peso(p.extra_hour_php ?? 50)}/h</td><td>${p.max_guests}</td>
     <td class="wrap">${p.items.map((i) => `${esc(i.name)} × ${i.qty}${i.per_guest ? '/guest' : ''}`).join(', ')}</td>
     <td>${p.active ? '<span class="badge CONFIRMED">On sale</span>' : '<span class="badge EXPIRED">Hidden</span>'}</td>
     <td><button class="link" data-edit-pkg="${esc(p.id)}">Edit</button></td></tr>`).join('');
@@ -506,9 +506,10 @@ function editPackage(p = {}) {
       <label>Nights (0 = day trip, up to 12 h)<input name="nights" type="number" min="0" max="14" value="${p.nights ?? 0}"></label>
       <label>Price (₱)<input name="pricePhp" type="number" min="0" value="${p.price_php ?? 0}"></label>
       <label>Price is<select name="pricing"><option value="per_guest" ${p.pricing !== 'per_package' ? 'selected' : ''}>per guest</option><option value="per_package" ${p.pricing === 'per_package' ? 'selected' : ''}>per package</option></select></label>
-      <label>Extra-day fee (₱)<input name="extraDayPhp" type="number" min="0" value="${p.extra_day_php ?? 0}"></label>
+      <label>Fee per extra hour (₱)<input name="extraHourPhp" type="number" min="0" value="${p.extra_hour_php ?? 50}"></label>
       <label>Max guests<input name="maxGuests" type="number" min="1" value="${p.max_guests ?? 2}"></label>
-      <label class="span2">Description<textarea name="description" rows="2">${esc(p.description ?? '')}</textarea></label>
+      <label class="span2">Description<textarea name="description" rows="3">${esc(p.description ?? '')}</textarea></label>
+      <label class="span2">Did you know? <span class="hint">(a short fact shown on the resort page in the app)</span><textarea name="funFact" rows="2">${esc(p.fun_fact ?? '')}</textarea></label>
       <div class="span2"><p class="label">Included services</p>
         ${catalog.services.filter((s) => s.active).map((s) => `
           <div class="item-row">
@@ -530,9 +531,9 @@ function editPackage(p = {}) {
     }));
     try {
       await api('/api/admin/packages', {
-        id: p.id, name: f.get('name'), location: f.get('location'), description: f.get('description'),
+        id: p.id, name: f.get('name'), location: f.get('location'), description: f.get('description'), funFact: f.get('funFact'),
         pricePhp: Number(f.get('pricePhp')), pricing: f.get('pricing'), nights: Number(f.get('nights')),
-        maxGuests: Number(f.get('maxGuests')), extraDayPhp: Number(f.get('extraDayPhp')), active: f.get('active') === 'on', items: chosen,
+        maxGuests: Number(f.get('maxGuests')), extraHourPhp: Number(f.get('extraHourPhp')), active: f.get('active') === 'on', items: chosen,
       });
       closeModal();
       loadCatalog();

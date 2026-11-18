@@ -299,9 +299,10 @@ const STATUS_COLOR: Record<DayStatus, string> = { open: '#1E8A6E', low: '#F5A201
 // Number of calendar days from `a` to `b` (b - a).
 export const daysBetween = (a: string, b: string) => Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 864e5);
 
-export function RangeCalendar({ start, end, onChange, min, max, minDays = 1, statuses }: {
+export function RangeCalendar({ start, end, onChange, min, max, minDays = 1, statuses, single }: {
   start: string; end: string; onChange: (start: string, end: string) => void;
   min: string; max: string; minDays?: number; statuses?: Record<string, { status: DayStatus; note: string | null }>;
+  single?: boolean; // only the first day is picked (the length comes from elsewhere)
 }) {
   const [month, setMonth] = useState(() => { const d = parseDay(start); return new Date(d.getFullYear(), d.getMonth(), 1); });
   // Picking state: after a first tap we wait for the end day.
@@ -321,6 +322,7 @@ export function RangeCalendar({ start, end, onChange, min, max, minDays = 1, sta
   // shortest end: new end. A tap before the start begins again.
   function tap(d: string) {
     const shortestEnd = addDays(d, minDays - 1);
+    if (single) { onChange(d, shortestEnd); return; }
     if (!picking || d < start) {
       onChange(d, shortestEnd);
       setPicking(true);
@@ -368,7 +370,7 @@ export function RangeCalendar({ start, end, onChange, min, max, minDays = 1, sta
           ))}
         </View>
       )}
-      <Text style={s.calHint}>{picking ? 'Now tap the last day of your stay (or the same day).' : 'Tap your first day, then your last day.'}</Text>
+      <Text style={s.calHint}>{single ? 'Tap your arrival day.' : picking ? 'Now tap the last day of your stay (or the same day).' : 'Tap your first day, then your last day.'}</Text>
     </View>
   );
 }

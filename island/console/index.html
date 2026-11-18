@@ -116,7 +116,7 @@
           </div>
         </section>
 
-        <!-- ===== Walk-in: a package (+ extra days) or build-your-own ===== -->
+        <!-- ===== Walk-in: a package (+ extra hours) or build-your-own ===== -->
         <section id="walkin" class="tab hidden">
           <div class="page-head">
             <div><p class="eyebrow">Front desk</p><h1>Walk-in booking</h1><p class="muted">Paid at the desk. Same inventory as the app, so nothing is sold twice.</p></div>
@@ -130,7 +130,7 @@
               <label>Date<input id="w-day" type="date" required></label>
               <label>Guests<input id="w-guests" type="number" min="1" value="2" required></label>
               <label class="w-package">Package<select id="w-package"></select></label>
-              <label class="w-package">Extra days <span class="hint">(each adds the extra-day fee)</span><input id="w-extra" type="number" min="0" max="14" value="0"></label>
+              <label class="w-package">Extra hours <span class="hint">(after the package time; fee per hour)</span><input id="w-extra" type="number" min="0" max="336" value="0"></label>
               <label class="w-custom hidden">Days<input id="w-days" type="number" min="1" max="14" value="1"></label>
               <div class="span2 w-custom hidden">
                 <p class="label">Services</p>
@@ -197,7 +197,7 @@
           </div>
           <div class="card">
             <div class="card-head"><h2>Packages</h2><button id="add-package">＋ Add package</button></div>
-            <table><thead><tr><th>Package</th><th>Length</th><th>Price</th><th>Extra day</th><th>Max guests</th><th>Includes</th><th>Status</th><th></th></tr></thead><tbody id="pkg-list"></tbody></table>
+            <table><thead><tr><th>Package</th><th>Length</th><th>Price</th><th>Extra hour</th><th>Max guests</th><th>Includes</th><th>Status</th><th></th></tr></thead><tbody id="pkg-list"></tbody></table>
           </div>
         </section>
 

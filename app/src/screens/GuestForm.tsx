@@ -84,7 +84,7 @@ export function GuestForm({ trip, account, onBack, onHeld }: { trip: Trip; accou
             <Text style={st.meta}>{trip.islandName}</Text>
             <Text style={st.meta}>{tripDates(trip.day, daysBetween(trip.day, trip.endDay))} · {trip.days} day{trip.days > 1 ? 's' : ''} · {trip.guests} guest{trip.guests > 1 ? 's' : ''}</Text>
             {trip.kind === 'custom' && <Text style={st.meta} numberOfLines={2}>{(trip.items ?? []).map((i) => `${i.name} × ${i.qty}`).join(', ')}</Text>}
-            {trip.extraDays ? <Text style={st.meta}>Includes {trip.extraDays} extra day{trip.extraDays > 1 ? 's' : ''}</Text> : null}
+            {trip.extraHours ? <Text style={st.meta}>Includes {trip.extraHours} extra hour{trip.extraHours > 1 ? 's' : ''}</Text> : null}
             <Text style={st.total}>{peso(trip.total)}</Text>
           </View>
         </View>

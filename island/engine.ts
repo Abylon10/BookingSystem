@@ -17,9 +17,10 @@
  * central's copy follows without ever editing island data.
  *
  * Pricing rules:
- *  - package: price (per guest or per package) covers the package length; a
- *    day trip is up to 12 hours. Each extra day the guest keeps the services
- *    adds the package's extra-day fee (× guests for per-guest packages).
+ *  - package: price (per guest or per package) covers the package time (a
+ *    day trip 12 hours, an overnight stay 24 hours per night). Each extra
+ *    hour after that adds the package's hourly fee (₱50 by default). When the
+ *    extra hours run into another day, the services are reserved that day too.
  *  - build-your-own: each service's day price × quantity × days.
  *  - cancellation refund: everything paid if cancelled before the trip date,
  *    half on the trip date itself, nothing for an unpaid hold.
@@ -47,6 +48,8 @@ export interface PackageRow {
   id: string; name: string; location: string; description: string;
   price_php: number; pricing: 'per_guest' | 'per_package'; nights: number; max_guests: number; active: number;
   extra_day_php: number;
+  extra_hour_php: number;
+  fun_fact: string;
 }
 export interface ServiceRow {
   id: string; kind: string; name: string; capacity: number; price_php: number; unit: 'person' | 'room' | 'trip'; active: number;
@@ -54,18 +57,20 @@ export interface ServiceRow {
 interface ItemRow { package_id: string; service_id: string; qty: number; per_guest: number; kind: string; service_name: string }
 export interface BookingRow {
   id: string; reference: string; request_id: string | null; source: 'ONLINE' | 'WALKIN';
-  package_id: string; package_name: string; day: string; end_day: string; nights: number; days: number; extra_days: number;
+  package_id: string; package_name: string; day: string; end_day: string; nights: number; days: number; extra_days: number; extra_hours: number;
   guests: number; guest_name: string; email: string; phone: string; id_type: string; id_last4: string;
   total_php: number; refund_php: number; status: string; hold_expires_at: number | null; created_by: string;
   created_at: number; updated_at: number; checked_in_at: number | null;
 }
 
-// What a booking request carries. Either packageId (+ optional extraDays) or
+// What a booking request carries. Either packageId (+ optional extraHours:
+// extra time after the package's hours; extraDays = 24 h each, older apps) or
 // items (build-your-own: services and quantities, for `days` days).
 export interface ReserveRequest {
   requestId: string;
   packageId?: string;
   extraDays?: number;
+  extraHours?: number;
   items?: { serviceId: string; qty: number }[];
   days?: number;
   day: string;
@@ -86,17 +91,22 @@ interface Plan {
   nights: number;
   days: number;
   extraDays: number;
+  extraHours: number;
   endDay: string;
 }
 
 // Longest stay one booking may cover (keeps a request from locking a season).
 const MAX_DAYS = 14;
 
+// Extra time asked for, in hours (extraDays from older apps = 24 h each).
+const extraHoursOf = (req: { extraHours?: number; extraDays?: number }) =>
+  Math.max(0, Math.floor(Number(req.extraHours ?? (Number(req.extraDays) || 0) * 24) || 0));
+
 // Input for creating/editing a service or package (node admin).
 export interface ServiceInput { id?: string; name: string; kind: string; capacity: number; pricePhp: number; unit: string; active?: boolean }
 export interface PackageInput {
   id?: string; name: string; location: string; description: string; pricePhp: number; pricing: string;
-  nights: number; maxGuests: number; extraDayPhp: number; active?: boolean;
+  nights: number; maxGuests: number; extraHourPhp: number; funFact?: string; active?: boolean;
   items: { serviceId: string; qty: number; perGuest: boolean }[];
 }
 
@@ -116,9 +126,16 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
 
   // ---- Planning: which units, which days, what price -----------------------
 
-  // A package booking. Rooms are taken for every night (+ extra days);
-  // other services on the first day (+ each extra day the guest stays).
-  function planPackage(pkg: PackageRow, day: string, guests: number, extraDays: number): Plan {
+  // A package booking with `extraHours` after the package time. The package
+  // time is 12 h for a day trip and 24 h per night for a stay; the extra
+  // hours decide how many more days the services are reserved (rooms for
+  // every night, other services on every day used).
+  function planPackage(pkg: PackageRow, day: string, guests: number, extraHours: number): Plan {
+    const baseHours = pkg.nights ? 24 * pkg.nights : 12;
+    const totalHours = baseHours + extraHours;
+    const extraDays = pkg.nights
+      ? Math.max(0, Math.ceil(totalHours / 24) - pkg.nights)       // extra nights
+      : Math.max(0, Math.ceil(totalHours / 24) - 1);               // extra days of a day trip
     const lines: Plan['lines'] = [];
     for (const it of itemsOf(pkg.id)) {
       const qty = it.qty * (it.per_guest ? guests : 1);
@@ -127,10 +144,10 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     }
     const perGuest = pkg.pricing === 'per_guest';
     const base = perGuest ? pkg.price_php * guests : pkg.price_php;
-    const extra = extraDays * pkg.extra_day_php * (perGuest ? guests : 1);
+    const extra = extraHours * (pkg.extra_hour_php ?? 50);
     return {
       packageId: pkg.id, name: pkg.name, lines, total: base + extra, nights: pkg.nights,
-      days: (pkg.nights || 0) + 1 + extraDays, extraDays, endDay: addDays(day, pkg.nights + extraDays),
+      days: (pkg.nights || 0) + 1 + extraDays, extraDays, extraHours, endDay: addDays(day, pkg.nights + extraDays),
     };
   }
 
@@ -153,7 +170,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     }
     return {
       packageId: 'custom', name: `Custom trip: ${names.join(', ')}`, lines, total, nights: hasRoom ? days : 0,
-      days, extraDays: 0, endDay: addDays(day, hasRoom ? days : days - 1),
+      days, extraDays: 0, extraHours: 0, endDay: addDays(day, hasRoom ? days : days - 1),
     };
   }
 
@@ -187,7 +204,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     return {
       reference: b.reference, island_id: island.id, island_name: island.name, source: b.source,
       package_id: b.package_id, package_name: b.package_name || pkg?.name || b.package_id, location: pkg?.location ?? island.name,
-      day: b.day, end_day: b.end_day || addDays(b.day, b.nights), nights: b.nights, days: b.days, extra_days: b.extra_days,
+      day: b.day, end_day: b.end_day || addDays(b.day, b.nights), nights: b.nights, days: b.days, extra_days: b.extra_days, extra_hours: b.extra_hours ?? 0,
       guests: b.guests, guest_name: b.guest_name, email: b.email, phone: b.phone,
       id_type: b.id_type, id_last4: b.id_last4, total_php: b.total_php, refund_php: b.refund_php, status: b.status,
       hold_expires_at: b.hold_expires_at, created_at: b.created_at, updated_at: b.updated_at, checked_in_at: b.checked_in_at,
@@ -259,15 +276,15 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     // Packages for a date, guest count and extra days. `available` is false
     // when a service is switched off (listed in unavailable_services), sold
     // out, or the group is too big. `spots` is kept for the calendar only.
-    availability(day: string, guests: number, extraDays = 0) {
+    availability(day: string, guests: number, extraHours = 0) {
       return this.catalog().map((p) => {
-        const plan = planPackage(p, day, guests, extraDays);
+        const plan = planPackage(p, day, guests, extraHours);
         const off = offServices(plan);
         const spots = spotsFor(plan);
         const fits = guests <= p.max_guests;
         const reason = !fits ? `Up to ${p.max_guests} guests` : off.length ? `${off.map((o) => o.name).join(', ')} unavailable` : spots < 1 ? 'Fully booked' : null;
         return {
-          ...p, day, guests, extra_days: extraDays, end_day: plan.endDay, days: plan.days,
+          ...p, day, guests, extra_hours: extraHours, extra_days: plan.extraDays, end_day: plan.endDay, days: plan.days,
           spots: fits && !off.length ? spots : 0, available: !reason, reason,
           unavailable_services: off, total_php: plan.total,
         };
@@ -316,9 +333,9 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     quote(req: ReserveRequest) {
       const guests = Math.max(1, Number(req.guests) || 1);
       const plan = req.packageId
-        ? planPackage(this.requirePackage(req.packageId), req.day, guests, Math.max(0, Math.floor(Number(req.extraDays) || 0)))
+        ? planPackage(this.requirePackage(req.packageId), req.day, guests, extraHoursOf(req))
         : planCustom(req.items ?? [], req.day, Math.max(1, Math.floor(Number(req.days) || 1)));
-      return { total_php: plan.total, days: plan.days, end_day: plan.endDay, name: plan.name, unavailable_services: offServices(plan), spots: spotsFor(plan) };
+      return { total_php: plan.total, days: plan.days, extra_hours: plan.extraHours, end_day: plan.endDay, name: plan.name, unavailable_services: offServices(plan), spots: spotsFor(plan) };
     },
     requirePackage(id: string) {
       const pkg = getPackage(id);
@@ -336,7 +353,13 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       if (!/^\d{4}$/.test(req.idLast4 ?? '')) throw new BookingError(400, 'idLast4 must be 4 digits', 'INVALID_ARGUMENT');
       const guests = Number(req.guests);
       if (!(guests >= 1)) throw new BookingError(400, 'guests must be at least 1', 'INVALID_ARGUMENT');
-      if (!req.guestName?.trim()) throw new BookingError(400, 'guest name is required', 'INVALID_ARGUMENT');
+      if (typeof req.guestName !== 'string' || !req.guestName.trim()) throw new BookingError(400, 'guest name is required', 'INVALID_ARGUMENT');
+      if (typeof req.idType !== 'string' || !req.idType.trim()) throw new BookingError(400, 'ID type is required', 'INVALID_ARGUMENT');
+      // Text fields must be plain short text (a bad request gets a clear 400,
+      // never a database error).
+      for (const [k, v, max] of [['guestName', req.guestName, 120], ['idType', req.idType, 40], ['email', req.email, 200], ['phone', req.phone, 40]] as const) {
+        if (v != null && (typeof v !== 'string' || v.length > max)) throw new BookingError(400, `${k} must be text of at most ${max} characters`, 'INVALID_ARGUMENT');
+      }
       checkDay(req.day);
 
       // Idempotency: the same request id returns the same booking.
@@ -348,9 +371,9 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       if (req.packageId) {
         const pkg = this.requirePackage(req.packageId);
         if (guests > pkg.max_guests) throw new BookingError(400, `This package is for up to ${pkg.max_guests} guests`, 'INVALID_ARGUMENT');
-        const extraDays = Math.floor(Number(req.extraDays) || 0);
-        if (extraDays < 0 || extraDays > MAX_DAYS) throw new BookingError(400, `Extra days must be 0-${MAX_DAYS}`, 'INVALID_ARGUMENT');
-        plan = planPackage(pkg, req.day, guests, extraDays);
+        const extraHours = extraHoursOf(req);
+        if (extraHours < 0 || extraHours > MAX_DAYS * 24) throw new BookingError(400, `Extra hours must be 0-${MAX_DAYS * 24}`, 'INVALID_ARGUMENT');
+        plan = planPackage(pkg, req.day, guests, extraHours);
       } else {
         const days = Math.floor(Number(req.days) || 1);
         if (days < 1 || days > MAX_DAYS) throw new BookingError(400, `Days must be 1-${MAX_DAYS}`, 'INVALID_ARGUMENT');
@@ -371,10 +394,10 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
         const now = Date.now();
         const id = randomUUID();
         db.prepare(
-          `INSERT INTO bookings (id, reference, request_id, source, package_id, package_name, day, end_day, nights, days, extra_days,
+          `INSERT INTO bookings (id, reference, request_id, source, package_id, package_name, day, end_day, nights, days, extra_days, extra_hours,
              guests, guest_name, email, phone, id_type, id_last4, total_php, status, hold_expires_at, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(id, newReference(), req.requestId, source, plan.packageId, plan.name, req.day, plan.endDay, plan.nights, plan.days, plan.extraDays,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(id, newReference(), req.requestId, source, plan.packageId, plan.name, req.day, plan.endDay, plan.nights, plan.days, plan.extraDays, plan.extraHours,
           guests, req.guestName.trim(), req.email ?? '', req.phone ?? '', req.idType, req.idLast4, plan.total,
           source === 'ONLINE' ? 'HELD' : 'CONFIRMED', source === 'ONLINE' ? now + holdMinutes * 60_000 : null,
           createdBy, now, now);
@@ -635,13 +658,13 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       const price = Math.round(Number(input.pricePhp));
       const nights = Math.floor(Number(input.nights));
       const maxGuests = Math.floor(Number(input.maxGuests));
-      const extra = Math.round(Number(input.extraDayPhp) || 0);
+      const extra = Math.round(Number(input.extraHourPhp ?? 50));
       if (name.length < 2) throw new BookingError(400, 'Package name is required', 'INVALID_ARGUMENT');
       if (!(price >= 0)) throw new BookingError(400, 'Price must be 0 or more', 'INVALID_ARGUMENT');
       if (!['per_guest', 'per_package'].includes(input.pricing)) throw new BookingError(400, 'Pricing must be per_guest or per_package', 'INVALID_ARGUMENT');
       if (!(nights >= 0 && nights <= MAX_DAYS)) throw new BookingError(400, `Nights must be 0-${MAX_DAYS}`, 'INVALID_ARGUMENT');
       if (!(maxGuests >= 1 && maxGuests <= 100)) throw new BookingError(400, 'Max guests must be 1-100', 'INVALID_ARGUMENT');
-      if (!(extra >= 0)) throw new BookingError(400, 'Extra-day fee must be 0 or more', 'INVALID_ARGUMENT');
+      if (!(extra >= 0)) throw new BookingError(400, 'Fee per extra hour must be 0 or more', 'INVALID_ARGUMENT');
       const items = (input.items ?? []).filter((i) => i.serviceId);
       if (!items.length) throw new BookingError(400, 'A package needs at least one service', 'INVALID_ARGUMENT');
       for (const it of items) {
@@ -655,15 +678,17 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
         if (id) {
           if (!getPackage(id)) throw new BookingError(404, 'Unknown package', 'NOT_FOUND');
           db.prepare(`UPDATE packages SET name = ?, location = ?, description = ?, price_php = ?, pricing = ?, nights = ?, max_guests = ?,
-                        extra_day_php = ?, active = ? WHERE id = ?`)
-            .run(name, String(input.location ?? '').trim(), String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra, active, id);
+                        extra_hour_php = ?, fun_fact = ?, active = ? WHERE id = ?`)
+            .run(name, String(input.location ?? '').trim(), String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra,
+              String(input.funFact ?? '').trim().slice(0, 400), active, id);
           db.prepare('DELETE FROM package_items WHERE package_id = ?').run(id);
         } else {
           id = `${island.id}-${slug(name)}`;
           if (getPackage(id)) id = `${id}-${randomInt(100, 999)}`;
-          db.prepare(`INSERT INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_day_php, active)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(id, name, String(input.location ?? '').trim() || island.name, String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra, active);
+          db.prepare(`INSERT INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_hour_php, fun_fact, active)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(id, name, String(input.location ?? '').trim() || island.name, String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra,
+              String(input.funFact ?? '').trim().slice(0, 400), active);
         }
         const addItem = db.prepare('INSERT INTO package_items VALUES (?, ?, ?, ?)');
         for (const it of items) addItem.run(id!, it.serviceId, Math.floor(Number(it.qty)), it.perGuest ? 1 : 0);

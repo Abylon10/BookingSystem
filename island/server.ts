@@ -110,7 +110,7 @@ const api: Handlers = {
     const day = req.day ?? today();
     return {
       island_id: island.id, island_name: island.name,
-      packages: engine.availability(day, Math.max(1, Number(req.guests) || 1), Math.max(0, Number(req.extraDays) || 0)),
+      packages: engine.availability(day, Math.max(1, Number(req.guests) || 1), Math.max(0, Number(req.extraHours ?? (Number(req.extraDays) || 0) * 24) || 0)),
       services: engine.services(day, Math.max(1, Number(req.days) || 1)),
     };
   },
@@ -510,14 +510,14 @@ app.post('/api/login', (req, res) => {
 app.get('/api/state', route((req) => {
   const day = (req.query.day as string) || today();
   const guests = Math.max(1, Number(req.query.guests) || 1);
-  const extraDays = Math.max(0, Number(req.query.extraDays) || 0);
+  const extraHours = Math.max(0, Number(req.query.extraHours) || 0);
   const outboxPending = (db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NULL').get() as { n: number }).n;
   const centralLink = !CENTRAL_URL ? 'lan'
     : link?.open ? 'connected'
       : linkMode === 'poll' ? (pollConnected ? 'polling' : 'connecting') : 'connecting';
   return {
     island: { id: island.id, name: island.name }, day, guests, partitioned, outboxPending, centralLink,
-    packages: engine.availability(day, guests, extraDays), inventory: engine.inventory(day),
+    packages: engine.availability(day, guests, extraHours), inventory: engine.inventory(day),
     services: engine.services(day, 1),
   };
 }));

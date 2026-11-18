@@ -5,9 +5,11 @@
  *
  *   Welcome (first launch only)
  *      │ get started
+ *   Log in (Google, or continue as guest; skipped when already signed in)
+ *      │
  *   Explore ──tap──▶ PackageDetail ──book now──▶ GuestForm ──reserve (HOLD)──▶ Payment ──pay──▶ Confirmation
- *                    (Package or Build your own: guests, dates, extra days
- *                     or the island's services checklist)
+ *                    (Package or Build your own: arrival day, guests, extra
+ *                     hours or the island's services checklist)
  *
  *   My trips (tab)  : list + calendar timeline ──tap──▶ Confirmation
  *   Account (tab)   : Google sign-in
@@ -21,11 +23,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Booking, Package, Trip } from './src/api';
-import { useAccount } from './src/auth';
+import { hasSavedSession, useAccount } from './src/auth';
 import { saveBooking } from './src/storage';
 import { applyTheme, colors, shadow, themed, type ThemeMode } from './src/theme';
-import { Ionicons, isoDay } from './src/ui';
+import { Ionicons } from './src/ui';
 import { Welcome } from './src/screens/Welcome';
+import { SignIn } from './src/screens/SignIn';
 import { Explore } from './src/screens/Explore';
 import { PackageDetail } from './src/screens/PackageDetail';
 import { GuestForm } from './src/screens/GuestForm';
@@ -39,35 +42,41 @@ type Tab = 'explore' | 'mine' | 'account';
 type Route =
   | { name: 'loading' }
   | { name: 'welcome' }
+  | { name: 'signin' }
   | { name: Tab }
   | { name: 'package'; pkg: Package }
   | { name: 'form'; trip: Trip; back: Route }
   | { name: 'pay'; booking: Booking }
   | { name: 'confirmed'; booking: Booking; justPaid: boolean; from: Tab };
 
-// Remembers that the welcome screen was seen on this phone, and day/night.
+// Remembers on this phone: welcome seen, "continue as guest" chosen, day/night.
 const WELCOME_KEY = 'seen-welcome';
+const GUEST_KEY = 'continue-as-guest';
 const THEME_KEY = 'app-theme';
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: 'loading' });
-  // Arrival date chosen on Explore, kept while browsing packages.
-  const [day, setDay] = useState(isoDay(new Date()));
   // Signed-in guest (Google), or null.
   const account = useAccount();
   // Day or night (saved on the phone).
   const [theme, setTheme] = useState<ThemeMode>('light');
 
-  // First launch → welcome screen; afterwards straight to Explore.
+  // First launch → welcome screen → Log in. Later launches: Log in again
+  // unless already signed in or "continue as guest" was chosen.
   // Also applies the saved day/night choice before the first screen shows.
   useEffect(() => {
-    AsyncStorage.multiGet([WELCOME_KEY, THEME_KEY])
-      .then(([[, seen], [, saved]]) => {
+    Promise.all([AsyncStorage.multiGet([WELCOME_KEY, GUEST_KEY, THEME_KEY]), hasSavedSession()])
+      .then(([[[, seen], [, guest], [, saved]], signedIn]) => {
         if (saved === 'dark') { applyTheme('dark'); setTheme('dark'); }
-        setRoute(seen ? { name: 'explore' } : { name: 'welcome' });
+        setRoute(!seen ? { name: 'welcome' } : signedIn || guest ? { name: 'explore' } : { name: 'signin' });
       })
       .catch(() => setRoute({ name: 'welcome' }));
   }, []);
+
+  // Signing in from the Log in screen moves on to Explore by itself.
+  useEffect(() => {
+    if (account && route.name === 'signin') setRoute({ name: 'explore' });
+  }, [account, route.name]);
 
   // Switches day / night: new palette and styles, re-render, remember it.
   const toggleTheme = () => {
@@ -87,13 +96,22 @@ export default function App() {
       screen = (
         <Welcome onStart={() => {
           AsyncStorage.setItem(WELCOME_KEY, '1').catch(() => {});
+          setRoute(account ? { name: 'explore' } : { name: 'signin' });
+        }} />
+      );
+      break;
+    case 'signin':
+      screen = (
+        <SignIn onGuest={() => {
+          AsyncStorage.setItem(GUEST_KEY, '1').catch(() => {});
           setRoute({ name: 'explore' });
         }} />
       );
       break;
     case 'explore':
       screen = (
-        <Explore day={day} onDay={setDay} onOpen={(pkg) => setRoute({ name: 'package', pkg })} theme={theme} onToggleTheme={toggleTheme} />
+        <Explore onOpen={(pkg) => setRoute({ name: 'package', pkg })} theme={theme} onToggleTheme={toggleTheme}
+          account={account} onLogin={() => setRoute({ name: 'signin' })} />
       );
       break;
     case 'package':
@@ -139,7 +157,7 @@ export default function App() {
 
   return (
     <View style={st.root}>
-      <StatusBar style={route.name === 'welcome' || route.name === 'loading' || theme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={route.name === 'welcome' || route.name === 'loading' || route.name === 'signin' || theme === 'dark' ? 'light' : 'dark'} />
       {screen}
       {tab && (
         <View style={st.tabs}>

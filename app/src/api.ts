@@ -7,8 +7,8 @@
  * walk-ins. (Supabase is used by the app only to sign in, see auth.ts.)
  *
  * Two kinds of trip can be booked:
- *  - a package, for its own length plus optional extra days (each extra day
- *    adds the package's extra-day fee), or
+ *  - a package, for its own time (a day trip 12 h, a stay 24 h per night)
+ *    plus optional extra hours (each adds the package's hourly fee), or
  *  - build-your-own: an island's services checklist, for a number of days.
  */
 
@@ -41,7 +41,8 @@ export interface Package {
   pricing: 'per_guest' | 'per_package';
   nights: number;
   max_guests: number;
-  extra_day_php: number;            // fee per extra day (× guests for per-guest packages)
+  extra_hour_php: number;           // fee per extra hour after the package time
+  fun_fact?: string;                // "Did you know?" for the resort page
   items: PackageItem[];
   day: string;
   end_day: string;
@@ -50,7 +51,7 @@ export interface Package {
   available: boolean;               // false when sold out, a service is off, or too many guests
   reason: string | null;            // why it can't be booked, e.g. "Boat transfer unavailable"
   unavailable_services: { id: string; name: string; day: string }[];
-  total_php: number;                // price for the chosen guests and extra days
+  total_php: number;                // price for the chosen guests and extra hours
 }
 
 // One service of an island's checklist (build-your-own).
@@ -110,6 +111,7 @@ export interface Booking {
   nights: number;
   days: number;
   extra_days: number;
+  extra_hours?: number;             // time bought after the package time
   guests: number;
   guest_name: string;
   email: string;
@@ -134,7 +136,7 @@ export interface Trip {
   islandName: string;
   imageId: string;                  // package id (or island id) for the picture
   packageId?: string;
-  extraDays?: number;
+  extraHours?: number;
   items?: { serviceId: string; qty: number; name: string }[];
   day: string;
   endDay: string;
@@ -194,7 +196,7 @@ export function newRequestId() {
 
 // The island part of a trip request, as central expects it.
 const tripBody = (t: Trip) => (t.kind === 'package'
-  ? { packageId: t.packageId, extraDays: t.extraDays ?? 0 }
+  ? { packageId: t.packageId, extraHours: t.extraHours ?? 0 }
   : { islandId: t.islandId, items: (t.items ?? []).map((i) => ({ serviceId: i.serviceId, qty: i.qty })), days: t.days });
 
 // ===========================================================================
@@ -203,8 +205,8 @@ const tripBody = (t: Trip) => (t.kind === 'package'
 
 // Searches all islands in parallel through central. `days` = how many days
 // the services checklist is checked for (build-your-own).
-export function searchPackages(day: string, guests = 1, extraDays = 0, days = 1) {
-  return request<SearchResult>(`/api/packages?day=${day}&guests=${guests}&extraDays=${extraDays}&days=${days}`);
+export function searchPackages(day: string, guests = 1, extraHours = 0, days = 1) {
+  return request<SearchResult>(`/api/packages?day=${day}&guests=${guests}&extraHours=${extraHours}&days=${days}`);
 }
 
 // Availability calendar of a package (open / low / full / off per day).
@@ -213,7 +215,7 @@ export function packageCalendar(packageId: string, from: string, count: number, 
 }
 
 // Price and end date of a trip before booking.
-export function quote(t: Pick<Trip, 'kind' | 'islandId' | 'packageId' | 'extraDays' | 'items' | 'days' | 'day' | 'guests'>) {
+export function quote(t: Pick<Trip, 'kind' | 'islandId' | 'packageId' | 'extraHours' | 'items' | 'days' | 'day' | 'guests'>) {
   return request<{ total_php: number; days: number; end_day: string; name: string; unavailable_services: { name: string; day: string }[] }>(
     '/api/quote', { method: 'POST', body: JSON.stringify({ ...tripBody(t as Trip), day: t.day, guests: t.guests }) });
 }
