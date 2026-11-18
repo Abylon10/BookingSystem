@@ -486,9 +486,20 @@ const route = (fn: Handler, adminOnly = false) => (req: express.Request, res: ex
 app.get('/api/session', (req, res) => {
   res.json({ island: { id: island.id, name: island.name }, hasAccounts: engine.hasStaff(), staff: readSession(req) });
 });
+// Sign-in. The page has two sign-ins, "Front desk staff" and "Island admin";
+// `as` says which one was used, and the account's role must match it, so a
+// receptionist can't enter through the admin sign-in (and the reverse).
+// What each role may do is still enforced on every route (adminOnly).
 app.post('/api/login', (req, res) => {
   const role = engine.verifyLogin(req.body.username, req.body.password);
   if (!role) return res.status(401).json({ error: 'Wrong username or password' });
+  const as = req.body.as;
+  if (as === 'node_admin' && role !== 'node_admin') {
+    return res.status(403).json({ error: 'This is a front desk staff account. Use the "Front desk staff" sign-in.' });
+  }
+  if (as === 'receptionist' && role !== 'receptionist') {
+    return res.status(403).json({ error: 'This is an island admin account. Use the "Island admin" sign-in.' });
+  }
   res.json(newSession(String(req.body.username).toLowerCase(), role));
 });
 

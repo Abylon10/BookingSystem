@@ -359,3 +359,12 @@ tr.click:hover td { background: #f7fafb; }
   .desk-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .desk-top, .desk-main { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ===== Sign-in: Front desk staff / Island admin =========================== */
+.role-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 12px; background: var(--page); border: 1px solid var(--line); }
+.role-pick button { background: transparent; color: var(--muted); border-radius: 9px; padding: 10px 8px; font-weight: 700; }
+.role-pick button.on { background: var(--primary); color: #fff; }
+.role-can { list-style: none; margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--page); display: grid; gap: 4px; font-size: .85rem; }
+.role-can li.yes { color: var(--ok); }
+.role-can li.no { color: var(--danger); }
+:root[data-theme="dark"] .role-pick, :root[data-theme="dark"] .role-can { background: #0f1e28; }

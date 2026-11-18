@@ -1,7 +1,9 @@
 <!doctype html>
 <!--
   island/console/login.html
-  Sign-in page of the island console (authentication). After signing in, the
+  Sign-in page of the island console (authentication). Two sign-ins, "Front
+  desk staff" and "Island admin": the account's role must match the one
+  chosen (checked by the island server). After signing in, the
   console (index.html) shows the pages for the account's role (authorization):
   receptionists go to their own page (desk.html), island admins to the full
   console (index.html).
@@ -34,10 +36,17 @@
     <section class="login-form-side">
       <form id="login-form" class="login-card">
         <h2>Sign in</h2>
-        <p class="muted" id="login-hint">Use the account given to you by your island admin.</p>
+        <!-- Two sign-ins: the account's role must match the one chosen -->
+        <div class="role-pick" id="role-pick" role="tablist">
+          <button type="button" data-role="receptionist" class="on" role="tab">Front desk staff</button>
+          <button type="button" data-role="node_admin" role="tab">Island admin</button>
+        </div>
+        <p class="muted" id="login-hint">Use the account your island admin gave you.</p>
+        <!-- What this role can do -->
+        <ul class="role-can" id="role-can"></ul>
         <label>Username<input id="user" autocomplete="username" required></label>
         <label>Password<input id="pass" type="password" autocomplete="current-password" required></label>
-        <button type="submit" id="login-btn">Sign in</button>
+        <button type="submit" id="login-btn">Sign in as front desk staff</button>
         <p id="login-error" class="error"></p>
         <!-- Shown when the island has no accounts yet -->
         <div id="no-accounts" class="result hidden">
@@ -80,6 +89,40 @@
       })
       .catch(() => { $('login-error').textContent = NOT_ISLAND; });
 
+    // Which sign-in is chosen, and what each role may do (the server checks
+    // the account's role matches, and enforces the limits on every action).
+    let role = 'receptionist';
+    try { if (localStorage.getItem('desk-last-role') === 'node_admin') role = 'node_admin'; } catch {}
+    const ROLES = {
+      receptionist: {
+        hint: 'Use the account your island admin gave you.',
+        button: 'Sign in as front desk staff',
+        can: ['✓ Check guests in after the ID check', '✓ Take walk-in bookings', '✓ Switch services on or off', '✓ See bookings',
+              '✕ Cancel bookings or give refunds', '✕ Change packages, prices or staff'],
+      },
+      node_admin: {
+        hint: 'Island admin accounts are created by the central admin.',
+        button: 'Sign in as island admin',
+        can: ['✓ Everything the front desk can do', '✓ Cancel bookings and give refunds', '✓ Add and edit packages, services and prices',
+              '✓ Create and disable front desk staff accounts', '✓ Disconnect from central (demo)'],
+      },
+    };
+    function showRole() {
+      document.querySelectorAll('#role-pick button').forEach((b) => b.classList.toggle('on', b.dataset.role === role));
+      $('login-hint').textContent = ROLES[role].hint;
+      $('login-btn').textContent = ROLES[role].button;
+      $('role-can').innerHTML = ROLES[role].can.map((c) => `<li class="${c.startsWith('✕') ? 'no' : 'yes'}">${c}</li>`).join('');
+      $('login-error').textContent = '';
+    }
+    $('role-pick').addEventListener('click', (e) => {
+      const r = e.target.closest('button')?.dataset.role;
+      if (!r) return;
+      role = r;
+      try { localStorage.setItem('desk-last-role', role); } catch {}
+      showRole();
+    });
+    showRole();
+
     // Sign in: on success keep the token and open the console.
     $('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -88,7 +131,7 @@
       try {
         const res = await fetch('/api/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: $('user').value, password: $('pass').value }),
+          body: JSON.stringify({ username: $('user').value, password: $('pass').value, as: role }),
         });
         const data = await readJson(res);
         if (!res.ok) throw new Error(data.error);
