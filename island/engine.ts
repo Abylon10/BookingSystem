@@ -2,18 +2,31 @@
  * island/engine.ts
  *
  * Booking logic of an island node, independent of HTTP / RPC:
- *  - availability   : which packages fit a date and guest count
- *  - reserve        : online hold or walk-in booking, atomic over all services
- *  - confirm / release / cancel / checkIn / expireHolds : status changes
- *  - block / unblock: receptionist marks units unavailable
- *  - staff          : login accounts (scrypt password hashes)
+ *  - catalog / availability : packages and services for a date, with the
+ *                             reason when something is unavailable
+ *  - calendar               : per-day status of a package (open / low / full / off)
+ *  - reserve                : a package (plus optional extra days) or a
+ *                             build-your-own trip; online hold or walk-in;
+ *                             atomic over all services and days
+ *  - confirm / release / cancel (with refund) / checkIn / expireHolds
+ *  - checklist              : on/off switch per service per day
+ *  - admin                  : create and edit services and packages with prices
+ *  - staff                  : login accounts (scrypt password hashes)
  *
- * Every change writes a BOOKING_UPDATED event to the outbox in the same
- * transaction, so central's copy follows without ever editing island data.
+ * Every change writes an event to the outbox in the same transaction, so
+ * central's copy follows without ever editing island data.
+ *
+ * Pricing rules:
+ *  - package: price (per guest or per package) covers the package length; a
+ *    day trip is up to 12 hours. Each extra day the guest keeps the services
+ *    adds the package's extra-day fee (× guests for per-guest packages).
+ *  - build-your-own: each service's day price × quantity × days.
+ *  - cancellation refund: everything paid if cancelled before the trip date,
+ *    half on the trip date itself, nothing for an unpaid hold.
  */
 import { randomInt, randomUUID, scryptSync, timingSafeEqual, randomBytes } from 'node:crypto';
-import { addDays } from '../shared/config.ts';
-import { addOutbox, transaction, type Db } from './db.ts';
+import { addDays, today } from '../shared/config.ts';
+import { addOutbox, extendInventory, transaction, type Db } from './db.ts';
 
 // An error that carries the HTTP status / RPC code for the caller.
 export class BookingError extends Error {
@@ -33,19 +46,28 @@ export class BookingError extends Error {
 export interface PackageRow {
   id: string; name: string; location: string; description: string;
   price_php: number; pricing: 'per_guest' | 'per_package'; nights: number; max_guests: number; active: number;
+  extra_day_php: number;
+}
+export interface ServiceRow {
+  id: string; kind: string; name: string; capacity: number; price_php: number; unit: 'person' | 'room' | 'trip'; active: number;
 }
 interface ItemRow { package_id: string; service_id: string; qty: number; per_guest: number; kind: string; service_name: string }
 export interface BookingRow {
   id: string; reference: string; request_id: string | null; source: 'ONLINE' | 'WALKIN';
-  package_id: string; day: string; nights: number; guests: number;
-  guest_name: string; email: string; phone: string; id_type: string; id_last4: string;
-  total_php: number; status: string; hold_expires_at: number | null; created_by: string;
+  package_id: string; package_name: string; day: string; end_day: string; nights: number; days: number; extra_days: number;
+  guests: number; guest_name: string; email: string; phone: string; id_type: string; id_last4: string;
+  total_php: number; refund_php: number; status: string; hold_expires_at: number | null; created_by: string;
   created_at: number; updated_at: number; checked_in_at: number | null;
 }
 
+// What a booking request carries. Either packageId (+ optional extraDays) or
+// items (build-your-own: services and quantities, for `days` days).
 export interface ReserveRequest {
   requestId: string;
-  packageId: string;
+  packageId?: string;
+  extraDays?: number;
+  items?: { serviceId: string; qty: number }[];
+  days?: number;
   day: string;
   guests: number;
   guestName: string;
@@ -55,40 +77,121 @@ export interface ReserveRequest {
   idLast4: string;
 }
 
+// The units a booking takes, its price and its dates (before it is saved).
+interface Plan {
+  packageId: string;
+  name: string;
+  lines: { serviceId: string; day: string; qty: number }[];
+  total: number;
+  nights: number;
+  days: number;
+  extraDays: number;
+  endDay: string;
+}
+
+// Longest stay one booking may cover (keeps a request from locking a season).
+const MAX_DAYS = 14;
+
+// Input for creating/editing a service or package (node admin).
+export interface ServiceInput { id?: string; name: string; kind: string; capacity: number; pricePhp: number; unit: string; active?: boolean }
+export interface PackageInput {
+  id?: string; name: string; location: string; description: string; pricePhp: number; pricing: string;
+  nights: number; maxGuests: number; extraDayPhp: number; active?: boolean;
+  items: { serviceId: string; qty: number; perGuest: boolean }[];
+}
+
 // ---------------------------------------------------------------------------
 // Engine (one per island)
 // ---------------------------------------------------------------------------
 
-export function createEngine(db: Db, island: { id: string; name: string; prefix: string }, holdMinutes: number) {
+export function createEngine(db: Db, island: { id: string; name: string; prefix: string }, holdMinutes: number, inventoryDays = 60) {
   const getPackage = (id: string) => db.prepare('SELECT * FROM packages WHERE id = ?').get(id) as PackageRow | undefined;
+  const getService = (id: string) => db.prepare('SELECT * FROM services WHERE id = ?').get(id) as ServiceRow | undefined;
   const itemsOf = (packageId: string) => db.prepare(
     `SELECT pi.*, s.kind, s.name AS service_name FROM package_items pi JOIN services s ON s.id = pi.service_id WHERE pi.package_id = ?`,
   ).all(packageId) as unknown as ItemRow[];
   const getBooking = (ref: string) => db.prepare('SELECT * FROM bookings WHERE reference = ?').get(String(ref).toUpperCase()) as BookingRow | undefined;
+  const isOff = db.prepare('SELECT 1 FROM service_off WHERE service_id = ? AND day = ?');
+  const freeOf = db.prepare('SELECT capacity - booked - blocked AS free FROM inventory WHERE service_id = ? AND day = ?');
 
-  // Units a package takes: rooms for every night, other services on day 1.
-  function linesFor(pkg: PackageRow, day: string, guests: number) {
-    const lines: { serviceId: string; day: string; qty: number }[] = [];
+  // ---- Planning: which units, which days, what price -----------------------
+
+  // A package booking. Rooms are taken for every night (+ extra days);
+  // other services on the first day (+ each extra day the guest stays).
+  function planPackage(pkg: PackageRow, day: string, guests: number, extraDays: number): Plan {
+    const lines: Plan['lines'] = [];
     for (const it of itemsOf(pkg.id)) {
       const qty = it.qty * (it.per_guest ? guests : 1);
-      const days = it.kind === 'room' ? Math.max(1, pkg.nights) : 1;
-      for (let d = 0; d < days; d++) lines.push({ serviceId: it.service_id, day: addDays(day, d), qty });
+      const n = (it.kind === 'room' ? Math.max(1, pkg.nights) : 1) + extraDays;
+      for (let d = 0; d < n; d++) lines.push({ serviceId: it.service_id, day: addDays(day, d), qty });
     }
-    return lines;
+    const perGuest = pkg.pricing === 'per_guest';
+    const base = perGuest ? pkg.price_php * guests : pkg.price_php;
+    const extra = extraDays * pkg.extra_day_php * (perGuest ? guests : 1);
+    return {
+      packageId: pkg.id, name: pkg.name, lines, total: base + extra, nights: pkg.nights,
+      days: (pkg.nights || 0) + 1 + extraDays, extraDays, endDay: addDays(day, pkg.nights + extraDays),
+    };
   }
 
-  // Price of a booking.
-  const priceOf = (pkg: PackageRow, guests: number) => (pkg.pricing === 'per_guest' ? pkg.price_php * guests : pkg.price_php);
+  // A build-your-own trip: each chosen service for `days` days.
+  function planCustom(items: { serviceId: string; qty: number }[], day: string, days: number): Plan {
+    if (!items.length) throw new BookingError(400, 'Choose at least one service', 'INVALID_ARGUMENT');
+    const lines: Plan['lines'] = [];
+    const names: string[] = [];
+    let total = 0;
+    let hasRoom = false;
+    for (const it of items) {
+      const s = getService(it.serviceId);
+      const qty = Math.floor(Number(it.qty));
+      if (!s || !s.active) throw new BookingError(404, `Unknown service ${it.serviceId}`, 'NOT_FOUND');
+      if (!(qty >= 1)) throw new BookingError(400, `Quantity for ${s.name} must be at least 1`, 'INVALID_ARGUMENT');
+      for (let d = 0; d < days; d++) lines.push({ serviceId: s.id, day: addDays(day, d), qty });
+      total += s.price_php * qty * days;
+      names.push(s.name);
+      if (s.kind === 'room') hasRoom = true;
+    }
+    return {
+      packageId: 'custom', name: `Custom trip: ${names.join(', ')}`, lines, total, nights: hasRoom ? days : 0,
+      days, extraDays: 0, endDay: addDays(day, hasRoom ? days : days - 1),
+    };
+  }
 
-  // The snapshot sent to central and returned to callers.
+  // Services in a plan that are switched off, with the first day they're off.
+  function offServices(plan: Plan) {
+    const off = new Map<string, string>();
+    for (const l of plan.lines) if (!off.has(l.serviceId) && isOff.get(l.serviceId, l.day)) off.set(l.serviceId, l.day);
+    return [...off].map(([id, day]) => ({ id, name: getService(id)?.name ?? id, day }));
+  }
+
+  // How many bookings like this still fit (the tightest service/day decides).
+  function spotsFor(plan: Plan) {
+    let spots = Infinity;
+    for (const l of plan.lines) {
+      const row = freeOf.get(l.serviceId, l.day) as { free: number } | undefined;
+      spots = Math.min(spots, row ? Math.floor(row.free / l.qty) : 0);
+    }
+    return spots === Infinity ? 0 : spots;
+  }
+
+  // ---- Snapshots -----------------------------------------------------------
+
+  // The snapshot sent to central and returned to callers. `services` lists
+  // what the booking uses (name and quantity per day).
   function snapshot(b: BookingRow) {
-    const pkg = getPackage(b.package_id);
+    const pkg = b.package_id === 'custom' ? undefined : getPackage(b.package_id);
+    const services = db.prepare(
+      `SELECT s.name, MAX(l.qty) AS qty, COUNT(*) AS days FROM booking_lines l JOIN services s ON s.id = l.service_id
+        WHERE l.booking_id = ? GROUP BY l.service_id ORDER BY s.kind, s.name`,
+    ).all(b.id) as { name: string; qty: number; days: number }[];
     return {
       reference: b.reference, island_id: island.id, island_name: island.name, source: b.source,
-      package_id: b.package_id, package_name: pkg?.name ?? b.package_id, location: pkg?.location ?? '',
-      day: b.day, nights: b.nights, guests: b.guests, guest_name: b.guest_name, email: b.email, phone: b.phone,
-      id_type: b.id_type, id_last4: b.id_last4, total_php: b.total_php, status: b.status,
+      package_id: b.package_id, package_name: b.package_name || pkg?.name || b.package_id, location: pkg?.location ?? island.name,
+      day: b.day, end_day: b.end_day || addDays(b.day, b.nights), nights: b.nights, days: b.days, extra_days: b.extra_days,
+      guests: b.guests, guest_name: b.guest_name, email: b.email, phone: b.phone,
+      id_type: b.id_type, id_last4: b.id_last4, total_php: b.total_php, refund_php: b.refund_php, status: b.status,
       hold_expires_at: b.hold_expires_at, created_at: b.created_at, updated_at: b.updated_at, checked_in_at: b.checked_in_at,
+      services,
     };
   }
   const emit = (b: BookingRow) => addOutbox(db, 'BOOKING_UPDATED', b.id, snapshot(b));
@@ -104,6 +207,10 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       back.run(l.qty, l.service_id, l.day);
     }
   }
+
+  // Refund for a cancellation: unpaid hold 0; paid and cancelled before the
+  // trip date: everything; on the trip date: half.
+  const refundFor = (b: BookingRow) => (b.status === 'HELD' ? 0 : today() < b.day ? b.total_php : Math.round(b.total_php / 2));
 
   // Moves a booking from one of `from` statuses to `to`, atomically: the
   // UPDATE only matches the expected status, so two desks (or a desk and the
@@ -125,8 +232,20 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     });
   }
 
+  // Validates and normalises a YYYY-MM-DD date within the bookable window.
+  function checkDay(day: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) throw new BookingError(400, 'day must be YYYY-MM-DD', 'INVALID_ARGUMENT');
+    if (day < today()) throw new BookingError(400, 'That date has passed', 'INVALID_ARGUMENT');
+    return day;
+  }
+
+  // Turns a name into an id part: "Kayak rental" -> "kayak-rental".
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'item';
+
   return {
     snapshot,
+
+    // ---- Catalog and availability -------------------------------------------
 
     // Catalog: active packages with their services.
     catalog() {
@@ -137,60 +256,130 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       }));
     },
 
-    // Packages bookable for a date and guest count. `spots` = how many such
-    // bookings still fit (the tightest service decides).
-    availability(day: string, guests: number) {
-      const free = db.prepare('SELECT capacity - booked - blocked AS free FROM inventory WHERE service_id = ? AND day = ?');
+    // Packages for a date, guest count and extra days. `available` is false
+    // when a service is switched off (listed in unavailable_services), sold
+    // out, or the group is too big. `spots` is kept for the calendar only.
+    availability(day: string, guests: number, extraDays = 0) {
       return this.catalog().map((p) => {
-        let spots = Infinity;
-        for (const l of linesFor(p, day, guests)) {
-          const row = free.get(l.serviceId, l.day) as { free: number } | undefined;
-          spots = Math.min(spots, row ? Math.floor(row.free / l.qty) : 0);
-        }
+        const plan = planPackage(p, day, guests, extraDays);
+        const off = offServices(plan);
+        const spots = spotsFor(plan);
         const fits = guests <= p.max_guests;
-        return { ...p, day, guests, spots: fits ? spots : 0, available: fits && spots > 0, total_php: priceOf(p, guests) };
+        const reason = !fits ? `Up to ${p.max_guests} guests` : off.length ? `${off.map((o) => o.name).join(', ')} unavailable` : spots < 1 ? 'Fully booked' : null;
+        return {
+          ...p, day, guests, extra_days: extraDays, end_day: plan.endDay, days: plan.days,
+          spots: fits && !off.length ? spots : 0, available: !reason, reason,
+          unavailable_services: off, total_php: plan.total,
+        };
       });
     },
 
-    // Reserve a package: HELD (online, expires) or CONFIRMED (walk-in, paid at
-    // the desk). All units are taken in ONE transaction, each with the guard
-    // "booked + blocked + qty <= capacity"; if any fails, everything rolls back.
-    // Online and walk-in use this same code on the same rows, so the race for
-    // the last room is decided here and can never oversell.
+    // Services for build-your-own: price, unit, and whether each can be
+    // booked for `days` days from `day` (switched off / no free units).
+    services(day: string, days = 1) {
+      const rows = db.prepare('SELECT * FROM services WHERE active = 1 ORDER BY kind, name').all() as unknown as ServiceRow[];
+      return rows.map((s) => {
+        let free = Infinity;
+        let offDay: string | null = null;
+        for (let d = 0; d < days; d++) {
+          const dd = addDays(day, d);
+          const row = freeOf.get(s.id, dd) as { free: number } | undefined;
+          free = Math.min(free, row ? row.free : 0);
+          if (!offDay && isOff.get(s.id, dd)) offDay = dd;
+        }
+        const reason = offDay ? `Unavailable on ${offDay}` : free < 1 ? 'Fully booked' : null;
+        return {
+          id: s.id, name: s.name, kind: s.kind, unit: s.unit, price_php: s.price_php,
+          free: free === Infinity ? 0 : free, available: !reason, reason,
+        };
+      });
+    },
+
+    // Calendar of a package for `count` days from `from`: per day "open",
+    // "low" (2 or fewer left), "full", or "off" (a service switched off).
+    calendar(packageId: string, from: string, count: number, guests: number) {
+      const pkg = getPackage(packageId);
+      if (!pkg || !pkg.active) throw new BookingError(404, 'Unknown package for this island', 'NOT_FOUND');
+      return Array.from({ length: Math.min(Math.max(1, count), 62) }, (_, i) => {
+        const day = addDays(from, i);
+        const plan = planPackage(pkg, day, guests, 0);
+        const off = offServices(plan);
+        const spots = spotsFor(plan);
+        const status = off.length ? 'off' : spots < 1 ? 'full' : spots <= 2 ? 'low' : 'open';
+        return { day, status, note: off.length ? `${off.map((o) => o.name).join(', ')} unavailable` : null };
+      });
+    },
+
+    // ---- Booking -------------------------------------------------------------
+
+    // Price and dates of a request without booking it (the app's summary).
+    quote(req: ReserveRequest) {
+      const guests = Math.max(1, Number(req.guests) || 1);
+      const plan = req.packageId
+        ? planPackage(this.requirePackage(req.packageId), req.day, guests, Math.max(0, Math.floor(Number(req.extraDays) || 0)))
+        : planCustom(req.items ?? [], req.day, Math.max(1, Math.floor(Number(req.days) || 1)));
+      return { total_php: plan.total, days: plan.days, end_day: plan.endDay, name: plan.name, unavailable_services: offServices(plan), spots: spotsFor(plan) };
+    },
+    requirePackage(id: string) {
+      const pkg = getPackage(id);
+      if (!pkg || !pkg.active) throw new BookingError(404, 'Unknown package for this island', 'NOT_FOUND');
+      return pkg;
+    },
+
+    // Reserve a package or a custom trip: HELD (online, expires unless paid)
+    // or CONFIRMED (walk-in, paid at the desk). All units for all days are
+    // taken in ONE transaction, each with the guard
+    // "booked + blocked + qty <= capacity"; if any fails, everything rolls
+    // back. Online and walk-in use this same code on the same rows, so the
+    // race for the last room is decided here and can never oversell.
     reserve(req: ReserveRequest, source: 'ONLINE' | 'WALKIN', createdBy: string) {
       if (!/^\d{4}$/.test(req.idLast4 ?? '')) throw new BookingError(400, 'idLast4 must be 4 digits', 'INVALID_ARGUMENT');
       const guests = Number(req.guests);
       if (!(guests >= 1)) throw new BookingError(400, 'guests must be at least 1', 'INVALID_ARGUMENT');
       if (!req.guestName?.trim()) throw new BookingError(400, 'guest name is required', 'INVALID_ARGUMENT');
+      checkDay(req.day);
 
       // Idempotency: the same request id returns the same booking.
       const existing = db.prepare('SELECT * FROM bookings WHERE request_id = ?').get(req.requestId) as BookingRow | undefined;
       if (existing) return snapshot(existing);
 
-      const pkg = getPackage(req.packageId);
-      if (!pkg || !pkg.active) throw new BookingError(404, 'Unknown package for this island', 'NOT_FOUND');
-      if (guests > pkg.max_guests) throw new BookingError(400, `This package is for up to ${pkg.max_guests} guests`, 'INVALID_ARGUMENT');
+      // Work out units, days and price for a package or a custom trip.
+      let plan: Plan;
+      if (req.packageId) {
+        const pkg = this.requirePackage(req.packageId);
+        if (guests > pkg.max_guests) throw new BookingError(400, `This package is for up to ${pkg.max_guests} guests`, 'INVALID_ARGUMENT');
+        const extraDays = Math.floor(Number(req.extraDays) || 0);
+        if (extraDays < 0 || extraDays > MAX_DAYS) throw new BookingError(400, `Extra days must be 0-${MAX_DAYS}`, 'INVALID_ARGUMENT');
+        plan = planPackage(pkg, req.day, guests, extraDays);
+      } else {
+        const days = Math.floor(Number(req.days) || 1);
+        if (days < 1 || days > MAX_DAYS) throw new BookingError(400, `Days must be 1-${MAX_DAYS}`, 'INVALID_ARGUMENT');
+        plan = planCustom(req.items ?? [], req.day, days);
+      }
+
+      // A switched-off service can't be sold (online or at the desk).
+      const off = offServices(plan);
+      if (off.length) throw new BookingError(409, `${off.map((o) => `${o.name} is unavailable on ${o.day}`).join('; ')}`, 'FAILED_PRECONDITION');
 
       const take = db.prepare('UPDATE inventory SET booked = booked + ? WHERE service_id = ? AND day = ? AND booked + blocked + ? <= capacity');
       return transaction(db, () => {
-        const lines = linesFor(pkg, req.day, guests);
-        for (const l of lines) {
+        for (const l of plan.lines) {
           if (take.run(l.qty, l.serviceId, l.day, l.qty).changes === 0) {
-            throw new BookingError(409, 'Sold out for that date', 'RESOURCE_EXHAUSTED');
+            throw new BookingError(409, `Sold out on ${l.day}`, 'RESOURCE_EXHAUSTED');
           }
         }
         const now = Date.now();
         const id = randomUUID();
         db.prepare(
-          `INSERT INTO bookings (id, reference, request_id, source, package_id, day, nights, guests, guest_name, email, phone,
-             id_type, id_last4, total_php, status, hold_expires_at, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(id, newReference(), req.requestId, source, pkg.id, req.day, pkg.nights, guests, req.guestName.trim(),
-          req.email ?? '', req.phone ?? '', req.idType, req.idLast4, priceOf(pkg, guests),
+          `INSERT INTO bookings (id, reference, request_id, source, package_id, package_name, day, end_day, nights, days, extra_days,
+             guests, guest_name, email, phone, id_type, id_last4, total_php, status, hold_expires_at, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(id, newReference(), req.requestId, source, plan.packageId, plan.name, req.day, plan.endDay, plan.nights, plan.days, plan.extraDays,
+          guests, req.guestName.trim(), req.email ?? '', req.phone ?? '', req.idType, req.idLast4, plan.total,
           source === 'ONLINE' ? 'HELD' : 'CONFIRMED', source === 'ONLINE' ? now + holdMinutes * 60_000 : null,
           createdBy, now, now);
         const addLine = db.prepare('INSERT INTO booking_lines VALUES (?, ?, ?, ?)');
-        for (const l of lines) addLine.run(id, l.serviceId, l.day, l.qty);
+        for (const l of plan.lines) addLine.run(id, l.serviceId, l.day, l.qty);
         const b = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id) as unknown as BookingRow;
         emit(b);
         return snapshot(b);
@@ -208,8 +397,17 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     },
     // Payment failed or abandoned: HELD -> RELEASED, units returned.
     release: (ref: string) => transition(ref, ['HELD'], 'RELEASED', (b) => giveBack(b.id)),
-    // Cancellation: HELD/CONFIRMED -> CANCELLED, units returned.
-    cancel: (ref: string) => transition(ref, ['HELD', 'CONFIRMED'], 'CANCELLED', (b) => giveBack(b.id)),
+    // Cancellation: HELD/CONFIRMED -> CANCELLED, units returned, refund recorded.
+    cancel: (ref: string) => transition(ref, ['HELD', 'CONFIRMED'], 'CANCELLED', (b) => {
+      giveBack(b.id);
+      db.prepare('UPDATE bookings SET refund_php = ? WHERE id = ?').run(refundFor(b), b.id);
+    }),
+    // What a cancellation would refund right now (shown before confirming).
+    refundPreview(ref: string) {
+      const b = getBooking(ref);
+      if (!b) throw new BookingError(404, 'Booking not found', 'NOT_FOUND');
+      return { reference: b.reference, total_php: b.total_php, refund_php: refundFor(b) };
+    },
     // Arrival confirmed after the ID check: CONFIRMED -> CHECKED_IN, once only.
     checkIn: (ref: string) => transition(ref, ['CONFIRMED'], 'CHECKED_IN'),
 
@@ -233,77 +431,172 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     recent: (limit = 100) => (db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT ?').all(limit) as unknown as BookingRow[]).map(snapshot),
     arrivals: (day: string) => (db.prepare("SELECT * FROM bookings WHERE day = ? AND status IN ('CONFIRMED', 'CHECKED_IN') ORDER BY guest_name").all(day) as unknown as BookingRow[]).map(snapshot),
 
-    // Console overview for one date: the four KPI cards plus a 7-day trend
-    // (the 6 days before `day`, then `day`) for the small bar charts.
+    // ---- Dashboard numbers ------------------------------------------------------
+
+    // Console dashboard for one date: arrivals, check-ins, walk-ins, online,
+    // cancellations, refunds, revenue, services switched off, plus a 7-day
+    // trend (the 6 days before `day`, then `day`) for the small charts.
     overview(day: string) {
-      // Counts for one date: expected arrivals, checked in, walk-ins, online,
-      // cancelled, and units marked unavailable out of total capacity.
       const countsFor = (d: string) => {
         const b = db.prepare(
           `SELECT
-             SUM(status IN ('CONFIRMED', 'CHECKED_IN'))                         AS arrivals,
-             SUM(status = 'CHECKED_IN')                                         AS checkedIn,
-             SUM(source = 'WALKIN' AND status IN ('CONFIRMED', 'CHECKED_IN'))  AS walkins,
-             SUM(source = 'ONLINE' AND status IN ('CONFIRMED', 'CHECKED_IN'))  AS online,
-             SUM(status = 'CANCELLED')                                          AS cancelled
+             SUM(status IN ('CONFIRMED', 'CHECKED_IN'))                                    AS arrivals,
+             SUM(status = 'CHECKED_IN')                                                    AS checkedIn,
+             SUM(source = 'WALKIN' AND status IN ('CONFIRMED', 'CHECKED_IN'))             AS walkins,
+             SUM(source = 'ONLINE' AND status IN ('CONFIRMED', 'CHECKED_IN'))             AS online,
+             SUM(status = 'CANCELLED')                                                     AS cancelled,
+             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') THEN total_php ELSE 0 END) AS revenue,
+             SUM(refund_php)                                                               AS refunds
            FROM bookings WHERE day = ?`,
         ).get(d) as Record<string, number | null>;
-        const inv = db.prepare('SELECT SUM(blocked) AS blocked, SUM(capacity) AS capacity FROM inventory WHERE day = ?').get(d) as Record<string, number | null>;
+        const off = (db.prepare('SELECT COUNT(*) AS n FROM service_off WHERE day = ?').get(d) as { n: number }).n;
         return {
           day: d, arrivals: b.arrivals ?? 0, checkedIn: b.checkedIn ?? 0, walkins: b.walkins ?? 0, online: b.online ?? 0,
-          cancelled: b.cancelled ?? 0, blocked: inv.blocked ?? 0, capacity: inv.capacity ?? 0,
+          cancelled: b.cancelled ?? 0, revenue: b.revenue ?? 0, refunds: b.refunds ?? 0, servicesOff: off,
         };
       };
       const trend = Array.from({ length: 7 }, (_, i) => countsFor(addDays(day, i - 6)));
-      return { ...trend[6], trend };
+      const servicesTotal = (db.prepare('SELECT COUNT(*) AS n FROM services WHERE active = 1').get() as { n: number }).n;
+      return { ...trend[6], servicesTotal, trend };
     },
 
-    // Inventory of all services for one day (console "Availability" tab).
-    inventory(day: string) {
-      return db.prepare(
-        `SELECT s.id, s.name, s.kind, i.capacity, i.booked, i.blocked, i.capacity - i.booked - i.blocked AS free
-           FROM services s LEFT JOIN inventory i ON i.service_id = s.id AND i.day = ? ORDER BY s.kind, s.name`,
-      ).all(day);
+    // Inventory for `days` days from `day`: per service per day capacity,
+    // booked, blocked and on/off. Used by the checklist and by central's
+    // Inventory page.
+    inventory(day: string, days = 1) {
+      const rows = db.prepare(
+        `SELECT s.id, s.name, s.kind, s.unit, s.price_php, s.active, i.day, i.capacity, i.booked, i.blocked,
+                (SELECT 1 FROM service_off o WHERE o.service_id = s.id AND o.day = i.day) AS off
+           FROM services s JOIN inventory i ON i.service_id = s.id
+          WHERE i.day >= ? AND i.day < ? ORDER BY s.kind, s.name, i.day`,
+      ).all(day, addDays(day, Math.max(1, days))) as Record<string, unknown>[];
+      return rows.map((r) => ({ ...r, off: Boolean(r.off), free: Number(r.capacity) - Number(r.booked) - Number(r.blocked) }));
     },
 
-    // Mark units unavailable for `days` days from `day` (repairs, weather,
-    // boat not running). Guarded like a booking: only free units can be blocked.
-    // If a day lacks free units, nothing changes and the affected bookings are listed.
-    block(serviceId: string, day: string, days: number, units: number) {
+    // ---- On/off checklist (desk) ---------------------------------------------
+
+    // Switch a service off (unavailable) or on for `days` days from `day`.
+    // Off: new bookings that need it are refused; existing ones are listed so
+    // the desk can call those guests.
+    setServiceOff(serviceId: string, day: string, off: boolean, user: string, days = 1) {
+      const s = getService(serviceId);
+      if (!s) throw new BookingError(404, 'Unknown service', 'NOT_FOUND');
       return transaction(db, () => {
-        for (let d = 0; d < days; d++) {
+        const affected: { reference: string; guest_name: string; day: string }[] = [];
+        for (let d = 0; d < Math.max(1, days); d++) {
           const dd = addDays(day, d);
-          const row = db.prepare('SELECT capacity, booked, blocked FROM inventory WHERE service_id = ? AND day = ?').get(serviceId, dd) as
-            { capacity: number; booked: number; blocked: number } | undefined;
-          if (!row) throw new BookingError(404, `No inventory for ${dd}`, 'NOT_FOUND');
-          const n = units > 0 ? units : row.capacity - row.booked - row.blocked; // 0 = block all free units
-          const { changes } = db.prepare('UPDATE inventory SET blocked = blocked + ? WHERE service_id = ? AND day = ? AND booked + blocked + ? <= capacity')
-            .run(n, serviceId, dd, n);
-          if (changes === 0) {
-            const affected = db.prepare(
-              `SELECT b.reference, b.guest_name FROM bookings b JOIN booking_lines l ON l.booking_id = b.id
+          if (off) {
+            db.prepare('INSERT OR REPLACE INTO service_off VALUES (?, ?, ?, ?)').run(serviceId, dd, user, Date.now());
+            affected.push(...db.prepare(
+              `SELECT DISTINCT b.reference, b.guest_name, l.day FROM bookings b JOIN booking_lines l ON l.booking_id = b.id
                 WHERE l.service_id = ? AND l.day = ? AND b.status IN ('HELD', 'CONFIRMED')`,
-            ).all(serviceId, dd) as { reference: string; guest_name: string }[];
-            throw new BookingError(409, `Only ${row.capacity - row.booked - row.blocked} unit(s) free on ${dd}; booked by: ${affected.map((a) => `${a.reference} (${a.guest_name})`).join(', ') || 'none'}`);
+            ).all(serviceId, dd) as typeof affected);
+          } else {
+            db.prepare('DELETE FROM service_off WHERE service_id = ? AND day = ?').run(serviceId, dd);
           }
         }
-        addOutbox(db, 'SERVICE_BLOCKED', null, { service_id: serviceId, day, days, units });
-        return { ok: true };
+        addOutbox(db, 'SERVICE_TOGGLED', null, { service_id: serviceId, service_name: s.name, day, days, off, by: user });
+        return { ok: true, service: s.name, off, affected };
       });
     },
-    unblock(serviceId: string, day: string, units: number) {
-      const { changes } = db.prepare('UPDATE inventory SET blocked = MAX(0, blocked - ?) WHERE service_id = ? AND day = ?')
-        .run(units > 0 ? units : 1e9, serviceId, day);
-      if (!changes) throw new BookingError(404, 'No inventory for that day', 'NOT_FOUND');
-      return { ok: true };
+
+    // ---- Admin: services and packages ------------------------------------------
+
+    // Every service and package, including retired ones (admin pages).
+    adminCatalog() {
+      const services = db.prepare('SELECT * FROM services ORDER BY active DESC, kind, name').all();
+      const packages = (db.prepare("SELECT * FROM packages WHERE id <> 'custom' ORDER BY active DESC, price_php").all() as unknown as PackageRow[]).map((p) => ({
+        ...p, items: itemsOf(p.id).map((i) => ({ service_id: i.service_id, name: i.service_name, kind: i.kind, qty: i.qty, per_guest: Boolean(i.per_guest) })),
+      }));
+      return { services, packages };
     },
 
-    // --- Staff accounts -----------------------------------------------------
+    // Creates or edits a service. A new one gets inventory for the coming
+    // days. Lowering capacity is refused on days that already sold more.
+    saveService(input: ServiceInput, user: string) {
+      const name = String(input.name ?? '').trim();
+      const capacity = Math.floor(Number(input.capacity));
+      const price = Math.round(Number(input.pricePhp));
+      if (name.length < 2) throw new BookingError(400, 'Service name is required', 'INVALID_ARGUMENT');
+      if (!(capacity >= 0 && capacity <= 10000)) throw new BookingError(400, 'Capacity must be 0-10000', 'INVALID_ARGUMENT');
+      if (!(price >= 0)) throw new BookingError(400, 'Price must be 0 or more', 'INVALID_ARGUMENT');
+      if (!['room', 'tour', 'boat', 'transfer', 'meal'].includes(input.kind)) throw new BookingError(400, 'Kind must be room, tour, boat, transfer or meal', 'INVALID_ARGUMENT');
+      if (!['person', 'room', 'trip'].includes(input.unit)) throw new BookingError(400, 'Unit must be person, room or trip', 'INVALID_ARGUMENT');
+      const active = input.active === false ? 0 : 1;
+
+      let id = input.id;
+      transaction(db, () => {
+        if (id) {
+          if (!getService(id)) throw new BookingError(404, 'Unknown service', 'NOT_FOUND');
+          const tooMany = db.prepare('SELECT day, booked + blocked AS used FROM inventory WHERE service_id = ? AND day >= ? AND booked + blocked > ? ORDER BY day LIMIT 3')
+            .all(id, today(), capacity) as { day: string; used: number }[];
+          if (tooMany.length) throw new BookingError(409, `Capacity ${capacity} is below what is already booked on ${tooMany.map((t) => `${t.day} (${t.used})`).join(', ')}`);
+          db.prepare('UPDATE services SET name = ?, kind = ?, capacity = ?, price_php = ?, unit = ?, active = ? WHERE id = ?')
+            .run(name, input.kind, capacity, price, input.unit, active, id);
+          db.prepare('UPDATE inventory SET capacity = ? WHERE service_id = ? AND day >= ?').run(capacity, id, today());
+        } else {
+          id = `${island.id}-${slug(name)}`;
+          if (getService(id)) id = `${id}-${randomInt(100, 999)}`;
+          db.prepare('INSERT INTO services (id, kind, name, capacity, price_php, unit, active) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .run(id, input.kind, name, capacity, price, input.unit, active);
+        }
+        addOutbox(db, 'CATALOG_CHANGED', null, { what: 'service', id, name, by: user });
+      });
+      extendInventory(db, inventoryDays, id);
+      return getService(id!);
+    },
+
+    // Creates or edits a package and its services. Existing bookings keep
+    // the units and price they were sold with.
+    savePackage(input: PackageInput, user: string) {
+      const name = String(input.name ?? '').trim();
+      const price = Math.round(Number(input.pricePhp));
+      const nights = Math.floor(Number(input.nights));
+      const maxGuests = Math.floor(Number(input.maxGuests));
+      const extra = Math.round(Number(input.extraDayPhp) || 0);
+      if (name.length < 2) throw new BookingError(400, 'Package name is required', 'INVALID_ARGUMENT');
+      if (!(price >= 0)) throw new BookingError(400, 'Price must be 0 or more', 'INVALID_ARGUMENT');
+      if (!['per_guest', 'per_package'].includes(input.pricing)) throw new BookingError(400, 'Pricing must be per_guest or per_package', 'INVALID_ARGUMENT');
+      if (!(nights >= 0 && nights <= MAX_DAYS)) throw new BookingError(400, `Nights must be 0-${MAX_DAYS}`, 'INVALID_ARGUMENT');
+      if (!(maxGuests >= 1 && maxGuests <= 100)) throw new BookingError(400, 'Max guests must be 1-100', 'INVALID_ARGUMENT');
+      if (!(extra >= 0)) throw new BookingError(400, 'Extra-day fee must be 0 or more', 'INVALID_ARGUMENT');
+      const items = (input.items ?? []).filter((i) => i.serviceId);
+      if (!items.length) throw new BookingError(400, 'A package needs at least one service', 'INVALID_ARGUMENT');
+      for (const it of items) {
+        if (!getService(it.serviceId)) throw new BookingError(404, `Unknown service ${it.serviceId}`, 'NOT_FOUND');
+        if (!(Math.floor(Number(it.qty)) >= 1)) throw new BookingError(400, 'Each service needs a quantity of at least 1', 'INVALID_ARGUMENT');
+      }
+      const active = input.active === false ? 0 : 1;
+
+      let id = input.id;
+      transaction(db, () => {
+        if (id) {
+          if (!getPackage(id)) throw new BookingError(404, 'Unknown package', 'NOT_FOUND');
+          db.prepare(`UPDATE packages SET name = ?, location = ?, description = ?, price_php = ?, pricing = ?, nights = ?, max_guests = ?,
+                        extra_day_php = ?, active = ? WHERE id = ?`)
+            .run(name, String(input.location ?? '').trim(), String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra, active, id);
+          db.prepare('DELETE FROM package_items WHERE package_id = ?').run(id);
+        } else {
+          id = `${island.id}-${slug(name)}`;
+          if (getPackage(id)) id = `${id}-${randomInt(100, 999)}`;
+          db.prepare(`INSERT INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_day_php, active)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(id, name, String(input.location ?? '').trim() || island.name, String(input.description ?? '').trim(), price, input.pricing, nights, maxGuests, extra, active);
+        }
+        const addItem = db.prepare('INSERT INTO package_items VALUES (?, ?, ?, ?)');
+        for (const it of items) addItem.run(id!, it.serviceId, Math.floor(Number(it.qty)), it.perGuest ? 1 : 0);
+        addOutbox(db, 'CATALOG_CHANGED', null, { what: 'package', id, name, by: user });
+      });
+      return this.adminCatalog().packages.find((p) => p.id === id);
+    },
+
+    // ---- Staff accounts --------------------------------------------------------
     hasStaff: () => (db.prepare('SELECT COUNT(*) AS n FROM staff').get() as { n: number }).n > 0,
     listStaff: () => db.prepare('SELECT username, role, active, created_at FROM staff ORDER BY role, username').all(),
     addStaff(username: string, password: string, role: 'node_admin' | 'receptionist') {
-      if (!/^[a-z0-9._-]{3,32}$/i.test(username)) throw new BookingError(400, 'Username: 3-32 letters, digits, . _ -', 'INVALID_ARGUMENT');
-      if (String(password).length < 8) throw new BookingError(400, 'Password must be at least 8 characters', 'INVALID_ARGUMENT');
+      if (!/^[a-z0-9._-]{3,32}$/i.test(username ?? '')) throw new BookingError(400, 'Username: 3-32 letters, digits, . _ -', 'INVALID_ARGUMENT');
+      if (String(password ?? '').length < 8) throw new BookingError(400, 'Password must be at least 8 characters', 'INVALID_ARGUMENT');
+      if (!['node_admin', 'receptionist'].includes(role)) throw new BookingError(400, 'Role must be node_admin or receptionist', 'INVALID_ARGUMENT');
       const salt = randomBytes(16).toString('hex');
       const hash = `${salt}:${scryptSync(password, salt, 32).toString('hex')}`;
       try {
@@ -312,9 +605,13 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
         throw new BookingError(409, 'That username already exists', 'ALREADY_EXISTS');
       }
       addOutbox(db, 'STAFF_ADDED', null, { username: username.toLowerCase(), role, island: island.id });
+      return { username: username.toLowerCase(), role };
     },
-    setStaffActive: (username: string, active: boolean) =>
-      db.prepare("UPDATE staff SET active = ? WHERE username = ? AND role = 'receptionist'").run(active ? 1 : 0, username.toLowerCase()).changes === 1,
+    // Enable/disable an account. Receptionists from the island console; node
+    // admins only from central (`anyRole`).
+    setStaffActive: (username: string, active: boolean, anyRole = false) =>
+      db.prepare(`UPDATE staff SET active = ? WHERE username = ?${anyRole ? '' : " AND role = 'receptionist'"}`)
+        .run(active ? 1 : 0, String(username).toLowerCase()).changes === 1,
     // Checks a login; returns the role or null.
     verifyLogin(username: string, password: string): string | null {
       const row = db.prepare('SELECT role, password_hash, active FROM staff WHERE username = ?').get(String(username).toLowerCase()) as

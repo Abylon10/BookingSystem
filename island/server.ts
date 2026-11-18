@@ -9,8 +9,12 @@
  *                             WebSocket, or HTTPS polling where WebSockets are
  *                             blocked (works from any internet connection)
  *                           - gRPC server: central calls our IP (same LAN only)
- *  - HTTP API + console : front desk (login, arrivals, walk-ins, blocking,
- *                         staff accounts) on this laptop
+ *  - HTTP API + console : front desk on this laptop. Sign-in page first;
+ *                         receptionists get the desk pages (dashboard,
+ *                         check-in, walk-in, services on/off), node admins
+ *                         also manage packages, services, prices, staff and
+ *                         cancellations/refunds. Node admin accounts are
+ *                         created from central (or island/create-admin.ts).
  *  - outbox sender      : pushes local events to central every 2 seconds
  *
  * Start with:  node island/server.ts <islandId>   (or npm run island:<id>)
@@ -55,7 +59,7 @@ const { me, island } = findIsland();
 const secret = ticketSecret();
 const db = openDb(island.id);
 seedIsland(db, seed, island);
-const engine = createEngine(db, island, seed.holdMinutes);
+const engine = createEngine(db, island, seed.holdMinutes, seed.inventoryDays);
 setInterval(() => engine.expireHolds(), 30_000);
 
 // "Disconnect from Central" switch, toggled from the staff console.
@@ -79,12 +83,22 @@ const api: Handlers = {
   // Catalog: this island's active packages and their services.
   GetCatalog: () => ({ island_id: island.id, packages: engine.catalog() }),
 
-  // Search fan-out: packages bookable for a date and guest count. Central
-  // calls every island at the same time and merges the answers.
-  SearchAvailability: (req) => ({
-    island_id: island.id, island_name: island.name,
-    packages: engine.availability(req.day ?? today(), Math.max(1, Number(req.guests) || 1)),
-  }),
+  // Search fan-out: packages (with the reason when one is unavailable) and
+  // the services checklist for build-your-own trips, for a date and guest
+  // count. Central calls every island at the same time and merges the answers.
+  SearchAvailability: (req) => {
+    const day = req.day ?? today();
+    return {
+      island_id: island.id, island_name: island.name,
+      packages: engine.availability(day, Math.max(1, Number(req.guests) || 1), Math.max(0, Number(req.extraDays) || 0)),
+      services: engine.services(day, Math.max(1, Number(req.days) || 1)),
+    };
+  },
+
+  // Availability calendar of one package (app: colour-coded days).
+  PackageCalendar: (req) => ({ days: engine.calendar(req.packageId, req.from ?? today(), Number(req.count) || 42, Math.max(1, Number(req.guests) || 1)) }),
+  // Price and end date of a package with extra days, or of a custom trip.
+  Quote: (req: ReserveRequest) => engine.quote(req),
 
   // Online booking, step 1: reserve the units (HELD, expires if unpaid).
   // The same engine call as a walk-in, on the same inventory rows.
@@ -93,18 +107,34 @@ const api: Handlers = {
   ConfirmBooking: (req) => engine.confirm(req.reference),
   // Step 2b (compensation): payment failed or abandoned -> give units back.
   ReleaseHold: (req) => engine.release(req.reference),
-  // Customer cancels from the app (e-mail must match the booking).
+  // Customer cancels from the app (e-mail must match the booking). The
+  // answer includes refund_php, the money given back.
   CancelBooking: (req) => {
     const b = engine.get(req.reference);
     if (!b || b.email.toLowerCase() !== String(req.email ?? '').toLowerCase()) throw new BookingError(404, 'Booking not found', 'NOT_FOUND');
     return engine.cancel(req.reference);
   },
-  // "My booking" lookup from the app (reference + e-mail).
+  // "My booking" lookup from the app (reference + e-mail), with what a
+  // cancellation would refund right now.
   GetBooking: (req) => {
     const b = engine.get(req.reference);
     if (!b || b.email.toLowerCase() !== String(req.email ?? '').toLowerCase()) throw new BookingError(404, 'Booking not found', 'NOT_FOUND');
-    return b;
+    return { ...b, refund_preview: engine.refundPreview(b.reference).refund_php };
   },
+
+  // --- Central administration (central admin is the caller) ---
+  // Island accounts: central creates the island's node admins (and can add
+  // receptionists), lists them, and can disable any of them.
+  CreateStaff: (req) => engine.addStaff(req.username, req.password, req.role === 'receptionist' ? 'receptionist' : 'node_admin'),
+  ListStaff: () => ({ staff: engine.listStaff() }),
+  SetStaffActive: (req) => ({ ok: engine.setStaffActive(req.username, Boolean(req.active), true) }),
+  // Inventory per service per day, and the island's dashboard numbers, for
+  // central's Inventory page.
+  GetInventory: (req) => ({
+    island_id: island.id, island_name: island.name,
+    inventory: engine.inventory(req.day ?? today(), Math.min(31, Math.max(1, Number(req.days) || 7))),
+    overview: engine.overview(req.day ?? today()),
+  }),
 
   // Health check: central uses it to see if the island is reachable.
   Ping: () => ({ island_id: island.id, server_time_ms: Date.now() }),
@@ -424,18 +454,11 @@ const route = (fn: Handler, adminOnly = false) => (req: express.Request, res: ex
   }
 };
 
-// First run: no staff yet -> the console asks to create the node admin.
+// Sign-in page info: island name, whether any account exists yet (if not,
+// the page explains that the central admin creates the island admin), and
+// the current session if the token is still valid.
 app.get('/api/session', (req, res) => {
-  res.json({ island: { id: island.id, name: island.name }, needsSetup: !engine.hasStaff(), staff: readSession(req) });
-});
-app.post('/api/setup', (req, res) => {
-  if (engine.hasStaff()) return res.status(409).json({ error: 'Already set up; sign in instead' });
-  try {
-    engine.addStaff(req.body.username, req.body.password, 'node_admin');
-    res.json(newSession(String(req.body.username).toLowerCase(), 'node_admin'));
-  } catch (err) {
-    res.status((err as BookingError).status ?? 500).json({ error: (err as Error).message });
-  }
+  res.json({ island: { id: island.id, name: island.name }, hasAccounts: engine.hasStaff(), staff: readSession(req) });
 });
 app.post('/api/login', (req, res) => {
   const role = engine.verifyLogin(req.body.username, req.body.password);
@@ -446,21 +469,23 @@ app.post('/api/login', (req, res) => {
 // --- Front desk -------------------------------------------------------------
 
 // Header + availability data: link status, sync backlog, packages for a date
-// and guest count, and every service's inventory that day.
+// and guest count (with unavailable services), and the services checklist.
 app.get('/api/state', route((req) => {
   const day = (req.query.day as string) || today();
   const guests = Math.max(1, Number(req.query.guests) || 1);
+  const extraDays = Math.max(0, Number(req.query.extraDays) || 0);
   const outboxPending = (db.prepare('SELECT COUNT(*) AS n FROM outbox WHERE sent_at IS NULL').get() as { n: number }).n;
   const centralLink = !CENTRAL_URL ? 'lan'
     : link?.open ? 'connected'
       : linkMode === 'poll' ? (pollConnected ? 'polling' : 'connecting') : 'connecting';
   return {
     island: { id: island.id, name: island.name }, day, guests, partitioned, outboxPending, centralLink,
-    packages: engine.availability(day, guests), inventory: engine.inventory(day),
+    packages: engine.availability(day, guests, extraDays), inventory: engine.inventory(day),
+    services: engine.services(day, 1),
   };
 }));
 
-// KPI cards on the console's Arrivals page: counts for a date + 7-day trend.
+// Dashboard cards: counts for a date + 7-day trend.
 app.get('/api/overview', route((req) => engine.overview((req.query.day as string) || today())));
 
 // Today's (or a given day's) arrivals, or a search by reference / name.
@@ -470,17 +495,29 @@ app.get('/api/bookings', route((req) => {
   return engine.recent(100);
 }));
 
-// Face-to-face booking: paid at the desk, so it is CONFIRMED at once.
+// Price of a walk-in (package + extra days, or custom services) before booking.
+app.post('/api/quote', route((req) => engine.quote(req.body as ReserveRequest)));
+
+// Face-to-face booking (receptionist or admin): paid at the desk, so it is
+// CONFIRMED at once. Packages with extra days, or build-your-own.
 app.post('/api/walkin', route((req, staff) => engine.reserve(req.body as ReserveRequest, 'WALKIN', staff.user)));
 
 // Arrival: staff matched the physical ID with the booking -> CHECKED_IN (once only).
 app.post('/api/bookings/:ref/checkin', route((req) => engine.checkIn(String(req.params.ref))));
-app.post('/api/bookings/:ref/cancel', route((req) => engine.cancel(String(req.params.ref))));
 
-// Mark units unavailable (repairs, weather, boat down) / make them available again.
-app.post('/api/blocks', route((req) =>
-  engine.block(req.body.serviceId, req.body.day, Math.max(1, Number(req.body.days) || 1), Number(req.body.units) || 0)));
-app.post('/api/blocks/release', route((req) => engine.unblock(req.body.serviceId, req.body.day, Number(req.body.units) || 0)));
+// Cancellation with refund: node admin only (receptionists can't give money back).
+app.get('/api/bookings/:ref/refund', route((req) => engine.refundPreview(String(req.params.ref)), true));
+app.post('/api/bookings/:ref/cancel', route((req) => engine.cancel(String(req.params.ref)), true));
+
+// Services on/off checklist: switch a service off (unavailable) or back on
+// for a date. Receptionists and admins.
+app.post('/api/checklist', route((req, staff) =>
+  engine.setServiceOff(String(req.body.serviceId), String(req.body.day || today()), Boolean(req.body.off), staff.user, Math.max(1, Number(req.body.days) || 1))));
+
+// Node admin: create / edit services and packages with prices.
+app.get('/api/admin/catalog', route(() => engine.adminCatalog(), true));
+app.post('/api/admin/services', route((req, staff) => engine.saveService(req.body, staff.user), true));
+app.post('/api/admin/packages', route((req, staff) => engine.savePackage(req.body, staff.user), true));
 
 // Staff accounts: the node admin creates and disables receptionists.
 app.get('/api/staff', route(() => engine.listStaff(), true));
@@ -490,12 +527,12 @@ app.post('/api/staff', route((req) => {
 }, true));
 app.post('/api/staff/:user/active', route((req) => ({ ok: engine.setStaffActive(String(req.params.user), Boolean(req.body.active)) }), true));
 
-// The "Disconnect from Central" switch (demo of an island losing its link).
+// The "Disconnect from Central" switch (demo of an island losing its link). Admin only.
 app.post('/api/partition', route((req) => {
   partitioned = Boolean(req.body.on);
   console.log(`[${island.id}] partition ${partitioned ? 'ON — cut off from central' : 'OFF — reconnected'}`);
   return { partitioned };
-}));
+}, true));
 
 // Listen on all interfaces so the staff phone can reach this laptop.
 app.listen(me.httpPort, '0.0.0.0', () => {

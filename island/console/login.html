@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  island/console/login.html
+  Sign-in page of the island console (authentication). After signing in, the
+  console (index.html) shows the pages for the account's role (authorization):
+  receptionists get the desk pages, node admins also get management pages.
+  Accounts are checked against this island's own staff table, so sign-in
+  works while the island is offline. Node admin accounts are created by the
+  central admin (central dashboard > Accounts).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Island Sign In</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-page">
+  <main class="login-wrap">
+    <!-- Left: island picture panel with the island name -->
+    <section class="login-art">
+      <div class="brand light"><span class="logo">⛵</span><span>Island Front Desk</span></div>
+      <div>
+        <h1 id="island-title">Island</h1>
+        <p>Check guests in, take walk-ins, switch services on or off, and manage packages for this island.</p>
+      </div>
+    </section>
+
+    <!-- Right: the sign-in form -->
+    <section class="login-form-side">
+      <form id="login-form" class="login-card">
+        <h2>Sign in</h2>
+        <p class="muted" id="login-hint">Use the account given to you by your island admin.</p>
+        <label>Username<input id="user" autocomplete="username" required></label>
+        <label>Password<input id="pass" type="password" autocomplete="current-password" required></label>
+        <button type="submit" id="login-btn">Sign in</button>
+        <p id="login-error" class="error"></p>
+        <!-- Shown when the island has no accounts yet -->
+        <div id="no-accounts" class="result hidden">
+          This island has no accounts yet. The <b>central admin</b> creates the island admin account
+          (central dashboard → Accounts). Without central, run on this laptop:<br>
+          <code>npm run island:admin -- <span id="island-id">island</span> --user NAME --pass PASSWORD</code>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    // Island name, whether accounts exist, and an already-valid session.
+    const $ = (id) => document.getElementById(id);
+    fetch('/api/session', { headers: { Authorization: `Bearer ${localStorage.getItem('desk-token') || ''}` } })
+      .then((r) => r.json())
+      .then((s) => {
+        $('island-title').textContent = s.island.name;
+        $('island-id').textContent = s.island.id;
+        document.title = `${s.island.name} · Sign in`;
+        if (s.staff) location.replace('index.html');            // still signed in
+        if (!s.hasAccounts) $('no-accounts').classList.remove('hidden');
+      });
+
+    // Sign in: on success keep the token and open the console.
+    $('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('login-error').textContent = '';
+      $('login-btn').disabled = true;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: $('user').value, password: $('pass').value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        localStorage.setItem('desk-token', data.token);
+        localStorage.setItem('desk-me', JSON.stringify({ user: data.user, role: data.role }));
+        location.replace('index.html');
+      } catch (err) {
+        $('login-error').textContent = err.message;
+      } finally {
+        $('login-btn').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

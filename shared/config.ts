@@ -4,7 +4,6 @@
  * Configuration helpers used by every process (central, islands, load tests):
  *  - where each machine lives on the network (config/network.<name>.json)
  *  - the catalog and capacities (config/seed.json)
- *  - how capacity is split between the online and walk-in pools
  *  - small date helpers (all dates are plain "YYYY-MM-DD" strings in UTC)
  */
 import { readFileSync } from 'node:fs';
@@ -47,12 +46,16 @@ export interface NetworkConfig {
 
 // A bookable resource with a daily capacity: rooms per night, tour seats or
 // boat seats per day. One inventory per service, owned by its island (no split
-// between online and walk-in).
+// between online and walk-in). pricePhp is the price of one unit for one day
+// ("unit": per person, per room/cottage, or per trip); guests pay it when they
+// build their own trip from the services checklist.
 export interface SeedService {
   id: string;
   kind: 'room' | 'tour' | 'boat' | 'transfer' | 'meal';
   name: string;
   capacity: number;
+  pricePhp: number;
+  unit: 'person' | 'room' | 'trip';
 }
 
 // One service used by a package: `qty` units per booking, or per guest when
@@ -65,7 +68,9 @@ export interface SeedPackageItem {
 }
 
 // What customers buy. pricing "per_guest" = price × guests; "per_package" =
-// one price for up to maxGuests. nights 0 = day trip.
+// one price for up to maxGuests. nights 0 = day trip (up to 12 hours).
+// extraDayPhp: fee for each day the guest keeps the services beyond the
+// package length (× guests when pricing is per_guest).
 export interface SeedPackage {
   id: string;
   name: string;
@@ -75,6 +80,7 @@ export interface SeedPackage {
   pricing: 'per_guest' | 'per_package';
   nights: number;
   maxGuests: number;
+  extraDayPhp: number;
   items: SeedPackageItem[];
 }
 

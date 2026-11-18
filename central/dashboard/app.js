@@ -1,8 +1,15 @@
 /**
  * central/dashboard/app.js
  *
- * Central admin dashboard: signs in, then loads GET /api/admin/summary every
- * 10 seconds and renders KPIs, island nodes, charts, activity and arrivals.
+ * Central admin dashboard. After sign-in, the sidebar switches between pages
+ * (address #dashboard, #islands, #bookings, #inventory, #accounts, #reports).
+ * Only the page on screen loads its data, and it refreshes every 10 s.
+ *   Dashboard : GET /api/admin/summary + inventory + accounts (summaries)
+ *   Islands   : summary (island nodes, per-island and per-package charts)
+ *   Bookings  : GET /api/admin/bookings?island&status&q
+ *   Inventory : GET /api/admin/inventory?day&days
+ *   Accounts  : GET/POST /api/admin/accounts
+ *   Reports   : summary (7-day trend) + GET /api/admin/report-bench
  */
 
 // ---------------------------------------------------------------------------
@@ -11,8 +18,11 @@
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const peso = (n) => `₱${Number(n || 0).toLocaleString('en-PH')}`;
 const ISLAND_COLORS = { biliran: '#6CA3A2', maripipi: '#EA9940', higatangan: '#4fbf8f' };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const fmtDay = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' });
 
 // "3 min ago" style relative time.
 function ago(iso) {
@@ -40,12 +50,13 @@ const ICONS = {
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   ticket: '<path d="M3 8a2 2 0 0 0 0 4v4h18v-4a2 2 0 0 0 0-4V5H3z"/><path d="M13 5v14" stroke-dasharray="2 2"/>',
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
-  seat: '<path d="M6 12V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6"/><path d="M4 12h16v4H4zM6 16v4M18 16v4"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v12"/>',
   pie: '<path d="M12 3v9h9"/><circle cx="12" cy="12" r="9"/>',
   bars: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
-  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   gauge: '<path d="M4 18a9 9 0 1 1 16 0"/><path d="M12 13l4-4"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  boxes: '<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.3-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.6 3 5.2"/>',
+  plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l3-7 3 3v4M8 11l3-3 3 2 3 1"/>',
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -69,12 +80,17 @@ function saveToken(t) {
   try { t ? localStorage.setItem('central-token', t) : localStorage.removeItem('central-token'); } catch { /* ignore */ }
 }
 
-// Calls an admin endpoint; a 401 shows the login screen again.
-async function adminGet(path) {
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+// Calls an admin endpoint (GET, or POST with a body); 401 shows the login.
+async function admin(path, body) {
+  const res = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
   if (res.status === 401) { showLogin(); throw new Error('signed out'); }
-  if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? res.statusText);
+  return data;
 }
 
 function showLogin(message = '') {
@@ -97,49 +113,87 @@ $('login-form').addEventListener('submit', async (e) => {
   $('login').classList.add('hidden');
   refresh();
 });
-
 $('logout').addEventListener('click', () => { saveToken(null); showLogin(); });
+
+// ---------------------------------------------------------------------------
+// Pages
+// ---------------------------------------------------------------------------
+
+const PAGES = ['dashboard', 'islands', 'bookings', 'inventory', 'accounts', 'reports'];
+const page = () => (PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard');
+
+// Shows the page named in the address and loads its data.
+function showPage() {
+  const p = page();
+  for (const name of PAGES) $(`page-${name}`).classList.toggle('hidden', name !== p);
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === p));
+  window.scrollTo(0, 0);
+  refresh();
+}
+window.addEventListener('hashchange', showPage);
 
 // ---------------------------------------------------------------------------
 // Charts (Chart.js), created once and updated on every refresh
 // ---------------------------------------------------------------------------
 
 const charts = {};
+const trendChart = (el) => new Chart(el, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Online', data: [], borderColor: '#6CA3A2', backgroundColor: 'rgba(108,163,162,.15)', fill: true, tension: .35, pointRadius: 3 },
+    { label: 'Walk-in', data: [], borderColor: '#EA9940', backgroundColor: 'rgba(234,153,64,.1)', fill: true, tension: .35, pointRadius: 3 },
+  ] },
+  options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+});
 if (window.Chart) {
   Chart.defaults.color = '#93a8b3';
   Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
   Chart.defaults.borderColor = 'rgba(108,163,162,.15)';
-
   charts.island = new Chart($('c-island'), {
     type: 'doughnut',
     data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderWidth: 0 }] },
     options: { cutout: '68%', maintainAspectRatio: false, plugins: { legend: { display: false } } },
   });
-  charts.trend = new Chart($('c-trend'), {
-    type: 'line',
-    data: { labels: [], datasets: [
-      { label: 'Online', data: [], borderColor: '#6CA3A2', backgroundColor: 'rgba(108,163,162,.15)', fill: true, tension: .35, pointRadius: 3 },
-      { label: 'Walk-in', data: [], borderColor: '#EA9940', backgroundColor: 'rgba(234,153,64,.1)', fill: true, tension: .35, pointRadius: 3 },
-    ] },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
+  charts.trend = trendChart($('c-trend'));
+  charts.trendMini = trendChart($('c-trend-mini'));
   charts.listing = new Chart($('c-listing'), {
     type: 'bar',
     data: { labels: [], datasets: [{ label: 'Bookings', data: [], backgroundColor: [], borderRadius: 8, maxBarThickness: 46 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { autoSkip: false, maxRotation: 0 } } } },
   });
+  charts.inv = new Chart($('c-inv'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => `${v}%` } } } },
+  });
+  charts.bench = new Chart($('c-bench'), {
+    type: 'bar',
+    data: { labels: [], datasets: [
+      { type: 'bar', label: 'Measured speedup', data: [], backgroundColor: '#6CA3A2', borderRadius: 8, maxBarThickness: 54 },
+      { type: 'line', label: 'Ideal (= threads)', data: [], borderColor: '#EA9940', borderDash: [6, 4], pointRadius: 3, fill: false },
+    ] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'speedup ×' } } } },
+  });
+}
+function setTrend(chart, daily) {
+  if (!chart) return;
+  chart.data.labels = daily.map((d) => fmtDay(d.day));
+  chart.data.datasets[0].data = daily.map((d) => d.online);
+  chart.data.datasets[1].data = daily.map((d) => d.walkin);
+  chart.update('none');
 }
 
 // ---------------------------------------------------------------------------
-// Render one summary
+// Shared pieces
 // ---------------------------------------------------------------------------
 
-function render(s) {
+// Ticker across the top (every page).
+function renderTicker(s) {
   const k = s.kpis;
-
-  // Ticker
   const linked = s.islands.filter((i) => i.status === 'online');
   $('ticker').innerHTML = [
     `<span>Islands online <b>${k.islandsOnline}/${k.islandsTotal}</b><em class="pill ${k.islandsOnline === k.islandsTotal ? 'ok' : k.islandsOnline ? 'warn' : 'bad'}">${linked.map((i) => cap(i.id)).join(', ') || 'none'}</em></span>`,
@@ -147,32 +201,86 @@ function render(s) {
     `<span>Last sync <b>${ago(s.lastSyncAt)}</b></span>`,
     `<span>Search across islands <b>${s.fanoutMs} ms</b></span>`,
   ].join('');
+}
 
-  // Greeting card
-  $('fanout').textContent = `${s.fanoutMs} ms`;
-  $('lastsync').textContent = ago(s.lastSyncAt);
+// Island status cards (Dashboard and Islands pages).
+function islandCards(islands) {
+  return islands.map((i) => {
+    const on = i.status === 'online';
+    const how = on ? ({ link: 'Cloud link', poll: 'Cloud (HTTPS polling)', grpc: 'LAN (gRPC)' }[i.via] ?? i.via) : esc((i.error ?? 'unreachable').slice(0, 60));
+    return `<div class="island-card">
+      <span class="dot ${on ? 'on' : 'off'}"></span>
+      <div><b>${esc(i.name ?? i.id)}</b><div class="meta">${on ? 'Online' : 'Offline'} · ${how}</div></div>
+      <div class="ms">${on ? `${i.ms}<small>ms</small>` : '<small>—</small>'}</div></div>`;
+  }).join('');
+}
 
-  // KPIs
+// Utilisation bar row.
+const utilRow = (label, pct, note = '') => `<div class="util"><div class="util-top"><b>${esc(label)}</b><span>${pct}%</span></div>
+  <div class="util-bar"><i style="width:${Math.min(100, pct)}%"></i></div>${note ? `<small>${note}</small>` : ''}</div>`;
+
+// ---------------------------------------------------------------------------
+// Page: Dashboard (summary of the other pages)
+// ---------------------------------------------------------------------------
+
+async function loadDashboard() {
+  const [s, inv, acc] = await Promise.all([
+    admin('/api/admin/summary'),
+    admin(`/api/admin/inventory?day=${todayStr()}&days=7`).catch(() => null),
+    admin('/api/admin/accounts').catch(() => null),
+  ]);
+  renderTicker(s);
+  const k = s.kpis;
   $('k-islands').textContent = `${k.islandsOnline} / ${k.islandsTotal}`;
   $('k-islands-sub').textContent = k.islandsOnline === k.islandsTotal ? 'All island nodes reachable' : 'Some islands offline';
   $('k-bookings').textContent = k.bookingsToday;
   $('k-bookings-sub').textContent = `${k.onlineToday} online · ${k.walkinToday} walk-in`;
   $('k-checkins').textContent = k.checkedInToday;
-  $('k-seats').textContent = `${k.packagesAvailable} / ${k.packagesTotal}`;
-  $('k-seats-sub').textContent = `₱${Number(k.revenuePhp).toLocaleString('en-PH')} in bookings so far`;
+  $('k-revenue').textContent = peso(k.revenuePhp);
+  $('k-revenue-sub').textContent = `refunds ${peso(s.refundsPhp)}`;
+  $('sum-islands').innerHTML = islandCards(s.islands);
 
-  // Island nodes
-  $('island-cards').innerHTML = s.islands.map((i) => {
-    const on = i.status === 'online';
-    const how = on ? ({ link: 'Cloud link', poll: 'Cloud (HTTPS polling)', grpc: 'LAN (gRPC)' }[i.via] ?? i.via) : esc((i.error ?? 'unreachable').slice(0, 60));
-    return `<div class="island-card">
-      <span class="dot ${on ? 'on' : 'off'}"></span>
-      <div><b>${esc(i.id)}</b><div class="meta">${on ? 'Online' : 'Offline'} · ${how}</div></div>
-      <div class="ms">${on ? `${i.ms}<small>ms</small>` : '<small>—</small>'}</div></div>`;
-  }).join('');
+  // Inventory summary: capacity used per island over 7 days.
+  $('sum-inventory').innerHTML = inv
+    ? inv.islands.map((i) => utilRow(i.name, i.utilisation, `${i.unitsBooked} of ${i.unitsCapacity} units · ${i.servicesOffToday} off today${i.online ? '' : ' · offline copy'}`)).join('')
+    : '<p class="empty">Inventory not available.</p>';
+
+  // Accounts summary: admins and receptionists per island.
+  $('sum-accounts').innerHTML = acc
+    ? acc.islands.map((i) => {
+      const admins = i.staff.filter((u) => u.role === 'node_admin').length;
+      const desk = i.staff.filter((u) => u.role === 'receptionist').length;
+      return `<div class="acc-sum"><span class="dot ${i.online ? 'on' : 'off'}"></span><b>${esc(i.name)}</b>
+        <span>${i.online ? `${admins} admin · ${desk} receptionist${desk === 1 ? '' : 's'}${admins ? '' : ' · <em class="warn-text">needs an admin</em>'}` : 'offline'}</span></div>`;
+    }).join('')
+    : '<p class="empty">Accounts not available.</p>';
+
+  // Activity feed and arrivals.
+  const feedIcon = { WALKIN_BOOKED: ['f-walkin', 'walk'], ONLINE_BOOKED: ['f-online', 'phone'], REDEEMED: ['f-checkin', 'check'], CANCELLED: ['f-cancel', 'x'] };
+  $('feed').innerHTML = s.activity.slice(0, 7).map((a) => {
+    const [cls, icon] = feedIcon[a.kind] ?? ['f-online', 'pulse'];
+    const [title, ...rest] = a.text.split(' · ');
+    const detail = [rest.join(' · '), cap(a.island)].filter(Boolean).join(' · ');
+    return `<li><span class="ficon ${cls}"><i data-icon="${icon}"></i></span>
+      <div><b>${esc(title)}</b><small>${esc(detail)}</small></div><time>${ago(a.at)}</time></li>`;
+  }).join('') || '<li class="empty">No activity yet.</li>';
+  $('arrival-list').innerHTML = s.arrivals.map((a) => {
+    const d = new Date(`${a.day}T00:00:00`);
+    return `<li><div class="cal"><b>${d.getDate()}</b><small>${d.toLocaleString('en', { month: 'short' })}</small></div>
+      <div><div class="who">${esc(a.guest)}</div><div class="what">${esc(a.listing)} · ${a.qty} · ${esc(a.code)}</div></div></li>`;
+  }).join('') || '<li class="empty">No upcoming arrivals</li>';
+  setTrend(charts.trendMini, s.daily);
+}
+
+// ---------------------------------------------------------------------------
+// Page: Islands
+// ---------------------------------------------------------------------------
+
+async function loadIslands() {
+  const s = await admin('/api/admin/summary');
+  renderTicker(s);
+  $('island-cards').innerHTML = islandCards(s.islands);
   $('islands-note').textContent = `checked ${new Date(s.generatedAt).toLocaleTimeString()}`;
-
-  // Donut: bookings by island
   const ids = Object.keys(s.byIsland);
   const totals = ids.map((id) => s.byIsland[id].online + s.byIsland[id].walkin);
   $('donut-total').textContent = totals.reduce((a, b) => a + b, 0);
@@ -185,58 +293,15 @@ function render(s) {
   $('island-legend').innerHTML = ids.map((id, n) => `<li><span><i style="background:${ISLAND_COLORS[id] ?? '#307082'}"></i>${esc(id)}</span>
     <span>${s.byIsland[id].online} online · ${s.byIsland[id].walkin} walk-in · <b>${totals[n]}</b></span></li>`).join('')
     || '<li class="empty">No bookings yet</li>';
-
-  // Activity feed
-  const feedIcon = { WALKIN_BOOKED: ['f-walkin', 'walk'], ONLINE_BOOKED: ['f-online', 'phone'], REDEEMED: ['f-checkin', 'check'], CANCELLED: ['f-cancel', 'x'] };
-  $('feed').innerHTML = s.activity.map((a) => {
-    const [cls, icon] = feedIcon[a.kind] ?? ['f-online', 'pulse'];
-    // "Walk-in BK-XXXX · Listing name" -> title on line 1, listing + island on line 2
-    const [title, ...rest] = a.text.split(' · ');
-    const detail = [rest.join(' · '), cap(a.island)].filter(Boolean).join(' · ');
-    return `<li><span class="ficon ${cls}"><i data-icon="${icon}"></i></span>
-      <div><b>${esc(title)}</b><small>${esc(detail)}</small></div><time>${ago(a.at)}</time></li>`;
-  }).join('') || '<li class="empty">No activity yet. Walk-ins and check-ins from islands appear here.</li>';
-
-  // Arrivals
-  $('arrival-list').innerHTML = s.arrivals.map((a) => {
-    const d = new Date(`${a.day}T00:00:00`);
-    return `<li><div class="cal"><b>${d.getDate()}</b><small>${d.toLocaleString('en', { month: 'short' })}</small></div>
-      <div><div class="who">${esc(a.guest)}</div><div class="what">${esc(a.listing)} · ${a.qty} · ${esc(a.code)}</div></div></li>`;
-  }).join('') || '<li class="empty">No upcoming online bookings</li>';
-
-  // Trend: last 7 days
-  if (charts.trend) {
-    charts.trend.data.labels = s.daily.map((d) => new Date(`${d.day}T00:00:00`).toLocaleDateString('en', { month: 'short', day: 'numeric' }));
-    charts.trend.data.datasets[0].data = s.daily.map((d) => d.online);
-    charts.trend.data.datasets[1].data = s.daily.map((d) => d.walkin);
-    charts.trend.update('none');
-  }
-
-  // Bars: bookings per listing, colored by island
   if (charts.listing) {
-    charts.listing.data.labels = s.byListing.map((l) => l.name.length > 22 ? `${l.name.slice(0, 21)}…` : l.name);
+    charts.listing.data.labels = s.byListing.map((l) => (l.name.length > 22 ? `${l.name.slice(0, 21)}…` : l.name));
     charts.listing.data.datasets[0].data = s.byListing.map((l) => l.count);
     charts.listing.data.datasets[0].backgroundColor = s.byListing.map((l) => ISLAND_COLORS[l.id.split('-')[0]] ?? '#307082');
     charts.listing.update('none');
   }
-
-  paintIcons();
 }
 
-// ---------------------------------------------------------------------------
-// Refresh loop
-// ---------------------------------------------------------------------------
-
-async function refresh() {
-  if (!token) return showLogin();
-  try {
-    render(await adminGet('/api/admin/summary'));
-  } catch (err) {
-    if (err.message !== 'signed out') $('ticker').textContent = `Could not load data: ${err.message}`;
-  }
-}
-
-// Speed test: same comparison as loadtest/search.ts, from the browser.
+// Speed test: sequential vs parallel island search, from the browser.
 $('a-speed').addEventListener('click', async () => {
   const out = $('speed-result');
   out.textContent = 'Running 5 sequential + 5 parallel searches…';
@@ -249,19 +314,128 @@ $('a-speed').addEventListener('click', async () => {
   const par = await avg('parallel');
   out.innerHTML = `Sequential <b>${seq} ms</b> · Parallel <b>${par} ms</b> · Speedup <b>${(seq / Math.max(par, 1)).toFixed(2)}×</b>`;
 });
-$('a-refresh').addEventListener('click', refresh);
 
-// Parallel report benchmark: worker threads 1/2/4/8 on the server.
-if (window.Chart) {
-  charts.bench = new Chart($('c-bench'), {
-    type: 'bar',
-    data: { labels: [], datasets: [
-      { type: 'bar', label: 'Measured speedup', data: [], backgroundColor: '#6CA3A2', borderRadius: 8, maxBarThickness: 54 },
-      { type: 'line', label: 'Ideal (= threads)', data: [], borderColor: '#EA9940', borderDash: [6, 4], pointRadius: 3, fill: false },
-    ] },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
-      scales: { y: { beginAtZero: true, title: { display: true, text: 'speedup ×' } } } },
-  });
+// ---------------------------------------------------------------------------
+// Page: Bookings
+// ---------------------------------------------------------------------------
+
+async function loadBookings() {
+  const q = new URLSearchParams({ q: $('bk-q').value.trim(), island: $('bk-island').value, status: $('bk-status').value });
+  const { bookings } = await admin(`/api/admin/bookings?${q}`);
+  $('bk-count').textContent = `${bookings.length} booking(s)`;
+  $('bk-list').innerHTML = bookings.map((b) => `<tr>
+    <td class="ref">${esc(b.reference)}</td><td>${esc(cap(b.island_id))}</td>
+    <td><span class="tag ${b.source === 'ONLINE' ? 'on' : 'walk'}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span></td>
+    <td>${esc(b.package_name)}${b.extra_days ? `<small> · +${b.extra_days} day(s)</small>` : ''}</td>
+    <td>${fmtDay(b.day)}${b.end_day && b.end_day !== b.day ? ` – ${fmtDay(b.end_day)}` : ''}</td>
+    <td>${b.guests}</td><td>${esc(b.guest_name)}</td><td>${peso(b.total_php)}</td><td>${b.refund_php ? peso(b.refund_php) : '—'}</td>
+    <td><span class="status s-${esc(b.status)}">${esc(b.status.replace('_', ' '))}</span></td></tr>`).join('')
+    || '<tr><td colspan="10" class="empty">No bookings match.</td></tr>';
+}
+$('bk-filter').addEventListener('submit', (e) => { e.preventDefault(); loadBookings(); });
+
+// ---------------------------------------------------------------------------
+// Page: Inventory (statistics per island)
+// ---------------------------------------------------------------------------
+
+async function loadInventory() {
+  const r = await admin(`/api/admin/inventory?day=${$('inv-day').value}&days=${$('inv-days').value}`);
+  // One card per island: utilisation and activity numbers.
+  $('inv-islands').innerHTML = r.islands.map((i) => `
+    <div class="panel glass inv-card" style="--c:${ISLAND_COLORS[i.id] ?? '#307082'}">
+      <div class="inv-head"><b>${esc(i.name)}</b>
+        <span class="pill ${i.online ? 'ok' : 'bad'}">${i.online ? 'Live' : `Offline · copy from ${ago(i.syncedAt)}`}</span></div>
+      <div class="inv-big"><b>${i.utilisation}%</b><span>capacity used<br>${i.unitsBooked} / ${i.unitsCapacity} units</span></div>
+      <div class="util-bar"><i style="width:${Math.min(100, i.utilisation)}%"></i></div>
+      <dl class="stats">
+        <div><dt>Bookings</dt><dd>${i.activity.bookings}</dd></div>
+        <div><dt>Online / walk-in</dt><dd>${i.activity.online} / ${i.activity.walkin}</dd></div>
+        <div><dt>Checked in</dt><dd>${i.activity.checkedIn}</dd></div>
+        <div><dt>Cancelled</dt><dd>${i.activity.cancelled}</dd></div>
+        <div><dt>Revenue</dt><dd>${peso(i.activity.revenuePhp)}</dd></div>
+        <div><dt>Refunds</dt><dd>${peso(i.activity.refundsPhp)}</dd></div>
+        <div><dt>Extra days sold</dt><dd>${i.activity.extraDays}</dd></div>
+        <div><dt>Custom trips</dt><dd>${i.activity.custom}</dd></div>
+      </dl>
+      <p class="small muted">${i.servicesOffToday} service(s) switched off on ${fmtDay(r.day)}</p>
+    </div>`).join('');
+  // Capacity used per day, one line per island.
+  if (charts.inv) {
+    const days = [...new Set(r.islands.flatMap((i) => i.perDay.map((d) => d.day)))].sort();
+    charts.inv.data.labels = days.map(fmtDay);
+    charts.inv.data.datasets = r.islands.map((i) => ({
+      label: i.name, borderColor: ISLAND_COLORS[i.id] ?? '#307082', backgroundColor: 'transparent', tension: .3, pointRadius: 3,
+      data: days.map((d) => { const x = i.perDay.find((p) => p.day === d); return x && x.capacity ? Math.round((x.booked / x.capacity) * 1000) / 10 : 0; }),
+    }));
+    charts.inv.update('none');
+  }
+  // Per-service table per island.
+  $('inv-services').innerHTML = r.islands.map((i) => `
+    <div class="panel glass">
+      <div class="panel-head"><h3><i data-icon="boxes"></i>${esc(i.name)} · services</h3><span class="chip">${r.days} days from ${fmtDay(r.day)}</span></div>
+      <div class="table-wrap"><table class="data"><thead><tr><th>Service</th><th>Kind</th><th>Price / day</th><th>Units booked</th><th>Capacity used</th><th>Days off</th></tr></thead><tbody>
+      ${i.services.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.kind)}</td><td>${peso(s.price_php)}</td><td>${s.booked} / ${s.capacity}</td>
+        <td><div class="util-bar inline"><i style="width:${Math.min(100, s.utilisation)}%"></i></div> ${s.utilisation}%</td>
+        <td>${s.offDays ? `<span class="status s-CANCELLED">${s.offDays} off</span>` : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No inventory copy yet</td></tr>'}
+      </tbody></table></div>
+    </div>`).join('');
+}
+['inv-day', 'inv-days'].forEach((id) => $(id).addEventListener('change', () => loadInventory().catch(showError)));
+
+// ---------------------------------------------------------------------------
+// Page: Accounts (island admins)
+// ---------------------------------------------------------------------------
+
+async function loadAccounts() {
+  const r = await admin('/api/admin/accounts');
+  // Island picker in the create form (keep the current choice).
+  const chosen = $('acc-island').value;
+  $('acc-island').innerHTML = r.islands.map((i) => `<option value="${esc(i.id)}" ${i.online ? '' : 'disabled'}>${esc(i.name)}${i.online ? '' : ' (offline)'}</option>`).join('');
+  if (chosen) $('acc-island').value = chosen;
+  $('acc-list').innerHTML = r.islands.map((i) => `
+    <div class="acc-island">
+      <div class="acc-head"><span class="dot ${i.online ? 'on' : 'off'}"></span><b>${esc(i.name)}</b>
+        <span class="muted small">${i.online ? `${i.staff.length} account(s)` : 'offline: accounts can be managed when it reconnects'}</span></div>
+      ${i.staff.length ? `<table class="data"><tbody>${i.staff.map((u) => `<tr>
+        <td>${esc(u.username)}</td><td>${u.role === 'node_admin' ? '<span class="tag on">Island admin</span>' : '<span class="tag walk">Receptionist</span>'}</td>
+        <td>${u.active ? 'Active' : '<span class="muted">Disabled</span>'}</td>
+        <td><button class="btn ghost small" data-island="${esc(i.id)}" data-user="${esc(u.username)}" data-active="${u.active ? 0 : 1}">${u.active ? 'Disable' : 'Enable'}</button></td></tr>`).join('')}</tbody></table>`
+        : i.online ? '<p class="empty">No accounts yet: create the island admin.</p>' : ''}
+    </div>`).join('');
+}
+$('acc-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const out = $('acc-result');
+  try {
+    const made = await admin('/api/admin/accounts', {
+      islandId: $('acc-island').value, username: $('acc-user').value, password: $('acc-pass').value, role: $('acc-role').value,
+    });
+    out.innerHTML = `<span class="ok-text">Created ${made.role === 'node_admin' ? 'island admin' : 'receptionist'} <b>${esc(made.username)}</b>. They sign in on the island's console.</span>`;
+    $('acc-user').value = '';
+    $('acc-pass').value = '';
+    loadAccounts();
+  } catch (err) {
+    out.innerHTML = `<span class="error">${esc(err.message)}</span>`;
+  }
+});
+$('acc-list').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-user]');
+  if (!b) return;
+  try {
+    await admin('/api/admin/accounts/active', { islandId: b.dataset.island, username: b.dataset.user, active: b.dataset.active === '1' });
+  } catch (err) { alert(err.message); }
+  loadAccounts();
+});
+$('acc-refresh').addEventListener('click', () => loadAccounts().catch(showError));
+
+// ---------------------------------------------------------------------------
+// Page: Reports
+// ---------------------------------------------------------------------------
+
+async function loadReports() {
+  const s = await admin('/api/admin/summary');
+  renderTicker(s);
+  setTrend(charts.trend, s.daily);
 }
 $('bench-run').addEventListener('click', async () => {
   const btn = $('bench-run');
@@ -269,18 +443,18 @@ $('bench-run').addEventListener('click', async () => {
   btn.textContent = 'Running…';
   $('bench-note').textContent = 'Running the report with 1, 2, 4 and 8 threads (3 runs each)…';
   try {
-    const r = await adminGet(`/api/admin/report-bench?records=${$('bench-records').value}`);
+    const r = await admin(`/api/admin/report-bench?records=${$('bench-records').value}`);
     if (charts.bench) {
       charts.bench.data.labels = r.rows.map((x) => `${x.threads} thread${x.threads > 1 ? 's' : ''}`);
       charts.bench.data.datasets[0].data = r.rows.map((x) => x.speedup);
       charts.bench.data.datasets[1].data = r.rows.map((x) => x.threads);
       charts.bench.update();
     }
-    $('bench-table').innerHTML = `<tr><th>Threads</th><th>Time</th><th>Speedup</th><th>Efficiency</th></tr>` +
+    $('bench-table').innerHTML = '<tr><th>Threads</th><th>Time</th><th>Speedup</th><th>Efficiency</th></tr>' +
       r.rows.map((x) => `<tr><td>${x.threads}</td><td>${x.ms} ms</td><td>${x.speedup}×</td><td>${Math.round(x.efficiency * 100)}%</td></tr>`).join('');
     const best = r.rows.reduce((a, b) => (b.speedup > a.speedup ? b : a));
     $('bench-note').textContent = `${r.records.toLocaleString()} records on ${r.cores} CPU core(s): best ${best.speedup}× with ${best.threads} threads. ` +
-      `Totals identical for every thread count. Speedup is limited by the number of cores (Amdahl's law).`;
+      "Totals identical for every thread count. Speedup is limited by the number of cores (Amdahl's law).";
   } catch (err) {
     $('bench-note').textContent = `Benchmark failed: ${err.message}`;
   } finally {
@@ -289,12 +463,20 @@ $('bench-run').addEventListener('click', async () => {
   }
 });
 
-// Sidebar: highlight the clicked section.
-for (const a of document.querySelectorAll('.sidebar nav:first-of-type a')) {
-  a.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar nav:first-of-type a').forEach((x) => x.classList.remove('active'));
-    a.classList.add('active');
-  });
+// ---------------------------------------------------------------------------
+// Refresh loop: only the page on screen
+// ---------------------------------------------------------------------------
+
+const loaders = { dashboard: loadDashboard, islands: loadIslands, bookings: loadBookings, inventory: loadInventory, accounts: loadAccounts, reports: loadReports };
+function showError(err) {
+  if (err.message !== 'signed out') $('ticker').textContent = `Could not load data: ${err.message}`;
+}
+async function refresh() {
+  if (!token) return showLogin();
+  try {
+    await loaders[page()]();
+    paintIcons();
+  } catch (err) { showError(err); }
 }
 
 // Clock and greeting.
@@ -302,11 +484,14 @@ function tick() {
   const now = new Date();
   $('date').textContent = now.toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   const h = now.getHours();
-  $('hello').textContent = h < 12 ? 'Good morning,' : h < 18 ? 'Good afternoon,' : 'Good evening,';
+  $('hello').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 $('host').textContent = location.host;
+$('inv-day').value = todayStr();
+for (const id of ['biliran', 'maripipi', 'higatangan']) $('bk-island').insertAdjacentHTML('beforeend', `<option value="${id}">${cap(id)}</option>`);
 tick();
 setInterval(tick, 60_000);
 paintIcons();
-refresh();
-setInterval(refresh, 10_000);
+showPage();
+// Pages with forms (Bookings filters, Accounts) are not auto-refreshed while typing.
+setInterval(() => { if (!document.hidden && !['bookings', 'accounts'].includes(page())) refresh(); }, 10_000);

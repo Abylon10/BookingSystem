@@ -136,22 +136,25 @@ function httpStatus(err: unknown): number {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PackageOut = Record<string, any> & { id: string };
 
-// Asks one island which packages fit the date and guest count, and measures
-// how long it took. Never throws: an unreachable or partitioned island is
-// reported as "offline" so the search can still return everything else.
-async function fetchIsland(island: Island, day: string, guests: number) {
+// Asks one island which packages fit the date and guest count (and its
+// services checklist for build-your-own trips), and measures how long it
+// took. Never throws: an unreachable or partitioned island is reported as
+// "offline" so the search can still return everything else.
+async function fetchIsland(island: Island, day: string, guests: number, extraDays = 0, days = 1) {
   const started = performance.now();
   try {
-    const reply = await callIsland<{ packages: PackageOut[] }>(island, 'SearchAvailability', { day, guests });
+    const reply = await callIsland<{ packages: PackageOut[]; services?: PackageOut[] }>(island, 'SearchAvailability', { day, guests, extraDays, days });
+    const name = seed.islands.find((s) => s.id === island.id)?.name ?? island.id;
     return {
       id: island.id, status: 'online' as const,
       via: !links.get(island.id)?.open ? 'grpc' : links.get(island.id) instanceof PollPeer ? 'poll' : 'link',
       ms: Math.round(performance.now() - started), packages: reply.packages,
+      services: (reply.services ?? []).map((s) => ({ ...s, island_id: island.id, island_name: name })),
     };
   } catch (err) {
     return {
       id: island.id, status: 'offline' as const, ms: Math.round(performance.now() - started),
-      error: errorText(err), packages: [] as PackageOut[],
+      error: errorText(err), packages: [] as PackageOut[], services: [] as PackageOut[],
     };
   }
 }
@@ -162,21 +165,23 @@ async function fetchIsland(island: Island, day: string, guests: number) {
 // The sequential mode exists only so the benchmark can compare the two.
 // An offline island's packages are left out: only the owning island can
 // confirm a booking, so central never sells what it cannot confirm.
-async function search(mode: 'parallel' | 'sequential', day: string, guests = 1) {
+async function search(mode: 'parallel' | 'sequential', day: string, guests = 1, extraDays = 0, days = 1) {
   const started = performance.now();
   let results: Awaited<ReturnType<typeof fetchIsland>>[];
   if (mode === 'parallel') {
-    results = await Promise.all(islands.map((i) => fetchIsland(i, day, guests)));
+    results = await Promise.all(islands.map((i) => fetchIsland(i, day, guests, extraDays, days)));
   } else {
     results = [];
-    for (const island of islands) results.push(await fetchIsland(island, day, guests));
+    for (const island of islands) results.push(await fetchIsland(island, day, guests, extraDays, days));
   }
   const fanoutMs = Math.round(performance.now() - started);
   return {
     mode, day, guests, fanoutMs,
     totalMs: Math.round(performance.now() - started),
-    islands: results.map(({ packages: _unused, ...r }) => ({ ...r, name: seed.islands.find((s) => s.id === r.id)?.name })),
+    islands: results.map(({ packages: _p, services: _s, ...r }) => ({ ...r, name: seed.islands.find((s) => s.id === r.id)?.name })),
     packages: results.flatMap((r) => r.packages),
+    // Services checklist per island, for build-your-own trips.
+    services: results.flatMap((r) => r.services),
     // Kept for the earlier dashboard/benchmark code that counted "listings".
     listings: results.flatMap((r) => r.packages),
   };
@@ -192,9 +197,9 @@ app.use(express.json());
 // CORS for the public guest API only (/api/packages, /api/bookings…), so the
 // app also works as a web page (Expo web). Phones don't need it. The admin
 // and island-link routes stay same-origin.
-app.use(['/api/packages', '/api/listings', '/api/bookings'], (req, res, next) => {
+app.use(['/api/packages', '/api/listings', '/api/bookings', '/api/quote', '/api/me'], (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -202,7 +207,15 @@ app.use(['/api/packages', '/api/listings', '/api/bookings'], (req, res, next) =>
 
 // Central dashboard: static page at "/" plus its login-protected data API.
 app.use(express.static(join(ROOT, 'central', 'dashboard')));
-mountAdmin(app, { sb, secret, search });
+mountAdmin(app, {
+  sb, secret, search,
+  // Lets the admin pages call any island (accounts, inventory).
+  ask: (islandId, method, request, timeoutMs) => {
+    const island = islandById(islandId);
+    return island ? callIsland(island, method, request, timeoutMs) : Promise.reject(new LinkError('NOT_FOUND', 'Unknown island'));
+  },
+  islandList: () => islands.map((i) => ({ id: i.id, name: seed.islands.find((s) => s.id === i.id)?.name ?? i.id, linked: Boolean(links.get(i.id)?.open) })),
+});
 // Island link fallback over plain HTTPS (central/poll.ts).
 mountPolling(app, { secret, knownIslands, pollPeerFor, storeEvents });
 
@@ -212,29 +225,80 @@ app.get('/health', (_req, res) => res.json({
   ok: true, supabase: Boolean(sb), linkedIslands: [...links].filter(([, p]) => p.open).map(([id]) => id),
 }));
 
-// Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&mode=sequential]
+// Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&extraDays=1][&days=2][&mode=sequential]
 const searchRoute: express.RequestHandler = async (req, res) => {
   const mode = req.query.mode === 'sequential' ? 'sequential' : 'parallel';
   const day = (req.query.day as string) || today();
   const guests = Math.max(1, Number(req.query.guests) || 1);
-  res.json(await search(mode, day, guests));
+  const extraDays = Math.max(0, Number(req.query.extraDays) || 0);
+  const days = Math.max(1, Number(req.query.days) || 1);
+  res.json(await search(mode, day, guests, extraDays, days));
 };
 app.get('/api/packages', searchRoute);
 app.get('/api/listings', searchRoute); // older name, same result
 
-// Online booking, step 1 — HOLD. The owning island reserves every service of
-// the package in one atomic transaction (same code and rows as a walk-in) and
+// The island that owns a package ("maripipi-sambawan-day" -> maripipi), or
+// the island named in the request (build-your-own trips).
+const islandFor = (b: { packageId?: string; islandId?: string }) =>
+  islandById(b.packageId ? String(b.packageId).split('-')[0] : String(b.islandId ?? ''));
+
+// Availability calendar of one package: GET /api/packages/:id/calendar?from&count&guests
+app.get('/api/packages/:id/calendar', async (req, res) => {
+  const island = islandFor({ packageId: req.params.id });
+  if (!island) return res.status(404).json({ error: 'Unknown package' });
+  try {
+    res.json(await callIsland(island, 'PackageCalendar', {
+      packageId: req.params.id, from: (req.query.from as string) || today(),
+      count: Number(req.query.count) || 42, guests: Math.max(1, Number(req.query.guests) || 1),
+    }, 5000));
+  } catch (err) {
+    res.status(httpStatus(err)).json({ error: errorText(err) });
+  }
+});
+
+// Price and end date before booking: POST /api/quote { packageId, extraDays }
+// or { islandId, items: [{serviceId, qty}], days } (build-your-own).
+app.post('/api/quote', async (req, res) => {
+  const b = req.body ?? {};
+  const island = islandFor(b);
+  if (!island) return res.status(404).json({ error: 'Unknown package or island' });
+  try {
+    res.json(await callIsland(island, 'Quote', b, 5000));
+  } catch (err) {
+    res.status(httpStatus(err)).json({ error: errorText(err) });
+  }
+});
+
+// The signed-in guest's bookings (Google sign-in through Supabase Auth):
+// GET /api/me/bookings with "Authorization: Bearer <Supabase access token>".
+// Central checks the token with Supabase and returns the copies whose
+// e-mail matches the account's verified e-mail.
+app.get('/api/me/bookings', async (req, res) => {
+  if (!sb) return res.status(503).json({ error: 'Accounts need Supabase on central' });
+  const jwt = (req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const { data, error } = jwt ? await sb.auth.getUser(jwt) : { data: { user: null }, error: null };
+  const email = data.user?.email;
+  if (error || !email) return res.status(401).json({ error: 'Sign in again' });
+  const { data: rows, error: qErr } = await sb.from('booking_copies').select('*').ilike('email', email).order('day', { ascending: false }).limit(100);
+  if (qErr) return res.status(500).json({ error: qErr.message });
+  res.json({ email, bookings: rows ?? [] });
+});
+
+// Online booking, step 1 — HOLD. The owning island reserves every service
+// (every day, for longer stays) in one atomic transaction (same code and rows as a walk-in) and
 // returns a HELD booking that expires if unpaid. Idempotency-Key makes a retry
 // after a timeout return the same booking instead of a second one.
 app.post('/api/bookings', async (req, res) => {
   const b = req.body ?? {};
   const requestId = req.get('Idempotency-Key') ?? b.requestId;
   if (!requestId) return res.status(400).json({ error: 'Idempotency-Key header required' });
-  const island = islandById(String(b.packageId ?? '').split('-')[0]);
-  if (!island) return res.status(404).json({ error: 'Unknown package' });
+  const island = islandFor(b);
+  if (!island) return res.status(404).json({ error: 'Unknown package or island' });
   try {
+    // A package (+ extraDays), or build-your-own: items + days on islandId.
     const booking = await callIsland(island, 'HoldBooking', {
-      requestId, packageId: b.packageId, day: b.day, guests: b.guests, guestName: b.guestName,
+      requestId, packageId: b.packageId, extraDays: b.extraDays, items: b.items, days: b.days,
+      day: b.day, guests: b.guests, guestName: b.guestName,
       email: b.email, phone: b.phone, idType: b.idType, idLast4: b.idLast4,
     }, 8000);
     res.status(201).json(booking);
@@ -279,7 +343,8 @@ app.get('/api/bookings/:ref', async (req, res) => {
   }
 });
 
-// Cancel: POST /api/bookings/:ref/cancel { email } — the island returns the units.
+// Cancel: POST /api/bookings/:ref/cancel { email } — the island returns the
+// units and the answer says how much is refunded (refund_php).
 app.post('/api/bookings/:ref/cancel', async (req, res) => {
   const island = ownerOf(req.params.ref);
   if (!island) return res.status(404).json({ error: 'Booking not found' });
@@ -336,8 +401,9 @@ async function storeEvents(events: IslandEvent[]): Promise<string[]> {
   const results = await Promise.all([...latest.values()].map((b) => sb.rpc('upsert_booking_copy', {
     p: {
       reference: b.reference, island_id: b.island_id, source: b.source, package_id: b.package_id,
-      package_name: b.package_name, day: b.day, nights: b.nights, guests: b.guests, guest_name: b.guest_name,
-      email: b.email ?? '', total_php: b.total_php, status: b.status,
+      package_name: b.package_name, day: b.day, end_day: b.end_day ?? '', nights: b.nights, days: b.days ?? 1,
+      extra_days: b.extra_days ?? 0, guests: b.guests, guest_name: b.guest_name,
+      email: b.email ?? '', total_php: b.total_php, refund_php: b.refund_php ?? 0, status: b.status,
       created_at: new Date(Number(b.created_at)).toISOString(), updated_at_ms: b.updated_at,
     },
   })));

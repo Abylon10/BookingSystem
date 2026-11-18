@@ -3,7 +3,11 @@
  *
  * Server side of the central dashboard (central/dashboard/):
  *  - POST /api/admin/login   : password -> signed session token (12 h)
- *  - GET  /api/admin/summary : everything the dashboard shows, in one call
+ *  - GET  /api/admin/summary   : the Dashboard page (summary of everything)
+ *  - GET  /api/admin/bookings  : Bookings page (all islands, filterable)
+ *  - GET/POST /api/admin/accounts : Accounts page (island admin accounts)
+ *  - GET  /api/admin/inventory : Inventory page (per-island stats, synced copy)
+ *  - GET  /api/admin/report-bench : Reports page (parallel worker benchmark)
  *
  * Central is public on the internet and the dashboard shows guest names, so
  * every admin endpoint needs a token. The password comes from ADMIN_PASSWORD
@@ -22,6 +26,10 @@ interface Deps {
   // Runs the live island fan-out (same as GET /api/listings).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   search: (mode: 'parallel' | 'sequential', day: string) => Promise<any>;
+  // Calls one island's method (over its link or LAN gRPC).
+  ask: <T = unknown>(islandId: string, method: string, request: object, timeoutMs?: number) => Promise<T>;
+  // Every island with its name and whether it is linked right now.
+  islandList: () => { id: string; name: string; linked: boolean }[];
 }
 
 const TOKEN_HOURS = 12;
@@ -69,6 +77,8 @@ interface Copy {
   status: string;
   created_at: string;
   received_at: string;
+  refund_php?: number;   // v3: money given back on cancellation
+  extra_days?: number;   // v3: days beyond the package length
 }
 
 const dayOf = (iso: string) => iso.slice(0, 10);
@@ -79,7 +89,7 @@ const SOLD = new Set(['HELD', 'CONFIRMED', 'CHECKED_IN']);
 // Routes
 // ---------------------------------------------------------------------------
 
-export function mountAdmin(app: express.Express, { sb, secret, search }: Deps): void {
+export function mountAdmin(app: express.Express, { sb, secret, search, ask, islandList }: Deps): void {
   const password = process.env.ADMIN_PASSWORD ?? '';
 
   // Login: returns a token the dashboard sends as "Authorization: Bearer ...".
@@ -191,6 +201,144 @@ export function mountAdmin(app: express.Express, { sb, secret, search }: Deps): 
       daily,
       activity,
       arrivals,
+      refundsPhp: copies.reduce((n, c) => n + (c.refund_php ?? 0), 0),
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bookings page: every island's bookings (central's copies), filterable
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/bookings', requireAdmin, async (req, res) => {
+    if (!sb) return res.json({ bookings: [] });
+    let q = sb.from('booking_copies').select('*').order('received_at', { ascending: false }).limit(500);
+    if (req.query.island) q = q.eq('island_id', String(req.query.island));
+    if (req.query.status) q = q.eq('status', String(req.query.status));
+    if (req.query.q) {
+      const text = String(req.query.q).replace(/[%,()]/g, ' ').trim();
+      q = q.or(`reference.ilike.%${text}%,guest_name.ilike.%${text}%,email.ilike.%${text}%`);
+    }
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ bookings: data ?? [] });
+  });
+
+  // -------------------------------------------------------------------------
+  // Accounts page: island admin (and receptionist) accounts, created by the
+  // central admin and stored on each island (logins work offline there)
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/accounts', requireAdmin, async (_req, res) => {
+    const list = await Promise.all(islandList().map(async (i) => {
+      try {
+        const r = await ask<{ staff: unknown[] }>(i.id, 'ListStaff', {}, 5000);
+        return { ...i, online: true, staff: r.staff };
+      } catch (err) {
+        return { ...i, online: false, error: (err as Error).message, staff: [] };
+      }
+    }));
+    res.json({ islands: list });
+  });
+  app.post('/api/admin/accounts', requireAdmin, async (req, res) => {
+    const { islandId, username, password, role } = req.body ?? {};
+    try {
+      res.json(await ask(String(islandId), 'CreateStaff', { username, password, role: role === 'receptionist' ? 'receptionist' : 'node_admin' }, 8000));
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      res.status(code === 'UNAVAILABLE' ? 503 : code === 'ALREADY_EXISTS' ? 409 : code === 'INVALID_ARGUMENT' ? 400 : 500)
+        .json({ error: code === 'UNAVAILABLE' ? 'That island is offline; try again when it is connected' : (err as Error).message });
+    }
+  });
+  app.post('/api/admin/accounts/active', requireAdmin, async (req, res) => {
+    const { islandId, username, active } = req.body ?? {};
+    try {
+      res.json(await ask(String(islandId), 'SetStaffActive', { username, active: Boolean(active) }, 8000));
+    } catch (err) {
+      res.status(503).json({ error: (err as Error).message });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Inventory page: each island's inventory for a date range, read live from
+  // the islands in parallel and copied to Supabase (inventory_copies), plus
+  // activity statistics per island from the booking copies. An offline
+  // island shows its last copy, marked stale.
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/inventory', requireAdmin, async (req, res) => {
+    const day = (req.query.day as string) || today();
+    const days = Math.min(31, Math.max(1, Number(req.query.days) || 7));
+    const end = addDays(day, days);
+
+    // 1. Live inventory from every island at once.
+    type Row = { id: string; name: string; kind: string; price_php: number; day: string; capacity: number; booked: number; blocked: number; off: boolean };
+    const live = await Promise.all(islandList().map(async (i) => {
+      try {
+        const r = await ask<{ inventory: Row[]; overview: Record<string, unknown> }>(i.id, 'GetInventory', { day, days }, 8000);
+        return { island: i, rows: r.inventory, overview: r.overview, stale: false, syncedAt: new Date().toISOString() };
+      } catch {
+        return { island: i, rows: null as Row[] | null, overview: null, stale: true, syncedAt: null as string | null };
+      }
+    }));
+
+    // 2. Keep central's copy current; read the copy for offline islands.
+    if (sb) {
+      const fresh = live.filter((l) => l.rows).flatMap((l) => l.rows!.map((r) => ({
+        island_id: l.island.id, service_id: r.id, day: r.day, service_name: r.name, kind: r.kind,
+        capacity: r.capacity, booked: r.booked, blocked: r.blocked, off: r.off, price_php: r.price_php, synced_at: new Date().toISOString(),
+      })));
+      if (fresh.length) {
+        const { error } = await sb.from('inventory_copies').upsert(fresh, { onConflict: 'island_id,service_id,day' });
+        if (error) console.warn(`[central] inventory copy not saved: ${error.message}`);
+      }
+      for (const l of live.filter((x) => !x.rows)) {
+        const { data } = await sb.from('inventory_copies').select('*').eq('island_id', l.island.id).gte('day', day).lt('day', end);
+        l.rows = (data ?? []).map((c) => ({ id: c.service_id, name: c.service_name, kind: c.kind, price_php: c.price_php, day: c.day, capacity: c.capacity, booked: c.booked, blocked: c.blocked, off: c.off }));
+        l.syncedAt = data?.[0]?.synced_at ?? null;
+      }
+    }
+
+    // 3. Activity statistics per island from central's booking copies.
+    let copies: Copy[] = [];
+    if (sb) {
+      const { data } = await sb.from('booking_copies').select('*').gte('day', addDays(day, -30)).lt('day', end).limit(5000);
+      copies = (data ?? []) as Copy[];
+    }
+
+    // 4. Per island: utilisation, per-service table, per-day series, activity.
+    const islandsOut = live.map((l) => {
+      const rows = l.rows ?? [];
+      const services = new Map<string, { id: string; name: string; kind: string; price_php: number; capacity: number; booked: number; offDays: number; days: number }>();
+      const perDay = new Map<string, { day: string; capacity: number; booked: number }>();
+      for (const r of rows) {
+        const s = services.get(r.id) ?? { id: r.id, name: r.name, kind: r.kind, price_php: r.price_php, capacity: 0, booked: 0, offDays: 0, days: 0 };
+        s.capacity += r.capacity; s.booked += r.booked; s.days += 1; if (r.off) s.offDays += 1;
+        services.set(r.id, s);
+        const d = perDay.get(r.day) ?? { day: r.day, capacity: 0, booked: 0 };
+        d.capacity += r.capacity; d.booked += r.booked;
+        perDay.set(r.day, d);
+      }
+      const cap = rows.reduce((n, r) => n + r.capacity, 0);
+      const booked = rows.reduce((n, r) => n + r.booked, 0);
+      const mine = copies.filter((c) => c.island_id === l.island.id);
+      const sold = mine.filter((c) => SOLD.has(c.status));
+      return {
+        id: l.island.id, name: l.island.name, online: !l.stale, syncedAt: l.syncedAt,
+        utilisation: cap ? Math.round((booked / cap) * 1000) / 10 : 0,
+        unitsBooked: booked, unitsCapacity: cap,
+        servicesOffToday: rows.filter((r) => r.day === day && r.off).length,
+        services: [...services.values()].map((s) => ({ ...s, utilisation: s.capacity ? Math.round((s.booked / s.capacity) * 1000) / 10 : 0 })),
+        perDay: [...perDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1)),
+        activity: {
+          bookings: sold.length,
+          online: sold.filter((c) => c.source === 'ONLINE').length,
+          walkin: sold.filter((c) => c.source === 'WALKIN').length,
+          checkedIn: mine.filter((c) => c.status === 'CHECKED_IN').length,
+          cancelled: mine.filter((c) => c.status === 'CANCELLED').length,
+          revenuePhp: sold.reduce((n, c) => n + c.total_php, 0),
+          refundsPhp: mine.reduce((n, c) => n + (c.refund_php ?? 0), 0),
+          extraDays: sold.reduce((n, c) => n + (c.extra_days ?? 0), 0),
+          custom: sold.filter((c) => c.package_id === 'custom').length,
+        },
+      };
+    });
+    res.json({ day, days, islands: islandsOut });
   });
 }

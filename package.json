@@ -12,6 +12,7 @@
     "island:biliran": "node --env-file-if-exists=.env island/server.ts biliran",
     "island:maripipi": "node --env-file-if-exists=.env island/server.ts maripipi",
     "island:higatangan": "node --env-file-if-exists=.env island/server.ts higatangan",
+    "island:admin": "node --env-file-if-exists=.env island/create-admin.ts",
     "test:race": "node --env-file-if-exists=.env loadtest/race.ts",
     "test:search": "node --env-file-if-exists=.env loadtest/search.ts",
     "typecheck": "tsc --noEmit",

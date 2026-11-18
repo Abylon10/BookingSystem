@@ -3,10 +3,12 @@
  *
  * The island's local database (built-in node:sqlite, one file per island in
  * data/). Everything here is OWNED by this island; central only keeps copies.
- *  - services       : rooms, tours, boats with a daily capacity
+ *  - services       : rooms, tours, boats with a daily capacity and a price
  *  - packages       : what customers buy, made of services (package_items)
  *  - inventory      : per service per day: capacity, booked, blocked
- *  - bookings       : online and walk-in, with a short reference (MRP-7F3K2)
+ *  - service_off    : on/off switch per service per day (desk checklist)
+ *  - bookings       : online and walk-in, packages or build-your-own trips,
+ *                     with a short reference (MRP-7F3K2), duration and refund
  *  - booking_lines  : exactly which units each booking took (to give them back)
  *  - staff          : node admin and receptionist logins (password hashes)
  *  - outbox         : events waiting to be sent to central
@@ -31,15 +33,19 @@ export function openDb(islandId: string): Db {
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 5000;
 
+    -- price_php: one unit for one day; unit: person | room | trip.
+    -- active = 0 hides a service the admin retired (old bookings keep it).
     CREATE TABLE IF NOT EXISTS services (
       id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL,
-      capacity INTEGER NOT NULL CHECK (capacity >= 0)
+      capacity INTEGER NOT NULL CHECK (capacity >= 0),
+      price_php INTEGER NOT NULL DEFAULT 0, unit TEXT NOT NULL DEFAULT 'person', active INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS packages (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, description TEXT NOT NULL,
       price_php INTEGER NOT NULL, pricing TEXT NOT NULL CHECK (pricing IN ('per_guest', 'per_package')),
-      nights INTEGER NOT NULL, max_guests INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1
+      nights INTEGER NOT NULL, max_guests INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+      extra_day_php INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS package_items (
@@ -57,8 +63,19 @@ export function openDb(islandId: string): Db {
       PRIMARY KEY (service_id, day)
     );
 
+    -- On/off checklist: a row means the service is NOT available that day
+    -- (boat down, tour closed). Existing bookings stay; new sales skip it.
+    CREATE TABLE IF NOT EXISTS service_off (
+      service_id TEXT NOT NULL REFERENCES services (id), day TEXT NOT NULL,
+      by_user TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL,
+      PRIMARY KEY (service_id, day)
+    );
+
     -- Statuses: HELD (online, waiting for payment) -> CONFIRMED -> CHECKED_IN;
-    -- or RELEASED / EXPIRED (hold undone), CANCELLED (units returned).
+    -- or RELEASED / EXPIRED (hold undone), CANCELLED (units returned, refund).
+    -- package_id is 'custom' for build-your-own trips (package_name says what).
+    -- days = how many days the services are used; extra_days = days beyond
+    -- the package length (each one adds the package's extra-day fee).
     CREATE TABLE IF NOT EXISTS bookings (
       id TEXT PRIMARY KEY,
       reference TEXT NOT NULL UNIQUE,
@@ -70,6 +87,9 @@ export function openDb(islandId: string): Db {
       id_type TEXT NOT NULL, id_last4 TEXT NOT NULL,
       total_php INTEGER NOT NULL,
       status TEXT NOT NULL,
+      package_name TEXT NOT NULL DEFAULT '', end_day TEXT NOT NULL DEFAULT '',
+      days INTEGER NOT NULL DEFAULT 1, extra_days INTEGER NOT NULL DEFAULT 0,
+      refund_php INTEGER NOT NULL DEFAULT 0,
       hold_expires_at INTEGER,
       created_by TEXT NOT NULL DEFAULT 'online',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, checked_in_at INTEGER
@@ -92,27 +112,70 @@ export function openDb(islandId: string): Db {
       payload TEXT NOT NULL, created_at INTEGER NOT NULL, sent_at INTEGER
     );
   `);
+  upgrade(db);
   return db;
 }
 
+// Adds columns that newer versions introduced to a database created by an
+// older version (teammates' laptops keep their data across updates).
+function upgrade(db: Db): void {
+  const columns = (table: string) => new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name));
+  const add: [string, string, string][] = [
+    ['services', 'price_php', 'INTEGER NOT NULL DEFAULT 0'],
+    ['services', 'unit', "TEXT NOT NULL DEFAULT 'person'"],
+    ['services', 'active', 'INTEGER NOT NULL DEFAULT 1'],
+    ['packages', 'extra_day_php', 'INTEGER NOT NULL DEFAULT 0'],
+    ['bookings', 'package_name', "TEXT NOT NULL DEFAULT ''"],
+    ['bookings', 'end_day', "TEXT NOT NULL DEFAULT ''"],
+    ['bookings', 'days', 'INTEGER NOT NULL DEFAULT 1'],
+    ['bookings', 'extra_days', 'INTEGER NOT NULL DEFAULT 0'],
+    ['bookings', 'refund_php', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [table, column, type] of add) {
+    if (!columns(table).has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+  // Build-your-own trips are stored with package_id 'custom'; this hidden
+  // (inactive) row satisfies the bookings -> packages foreign key.
+  db.prepare(`INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, active)
+              VALUES ('custom', 'Build-your-own trip', '', '', 0, 'per_package', 0, 100, 0)`).run();
+}
+
 // Fills services, packages and inventory from config/seed.json. INSERT OR
-// IGNORE never overwrites existing rows (or units already sold), so this runs
-// safely on every start and only adds missing days.
+// IGNORE never overwrites existing rows (or units already sold, or changes the
+// node admin made), so this runs safely on every start. Prices that are still
+// 0 (databases from before prices existed) are filled in from the seed.
+// Finally every service, including ones the admin added, gets inventory rows
+// for the next inventoryDays days.
 export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
-  const addService = db.prepare('INSERT OR IGNORE INTO services VALUES (?, ?, ?, ?)');
-  const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const addService = db.prepare('INSERT OR IGNORE INTO services (id, kind, name, capacity, price_php, unit) VALUES (?, ?, ?, ?, ?, ?)');
+  const fillPrice = db.prepare('UPDATE services SET price_php = ?, unit = ? WHERE id = ? AND price_php = 0');
+  const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_day_php) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const fillExtra = db.prepare('UPDATE packages SET extra_day_php = ? WHERE id = ? AND extra_day_php = 0');
   const addItem = db.prepare('INSERT OR IGNORE INTO package_items VALUES (?, ?, ?, ?)');
-  const addDay = db.prepare('INSERT OR IGNORE INTO inventory (service_id, day, capacity) VALUES (?, ?, ?)');
-  const start = today();
   transaction(db, () => {
     for (const s of island.services) {
-      addService.run(s.id, s.kind, s.name, s.capacity);
-      for (let i = 0; i < seed.inventoryDays; i++) addDay.run(s.id, addDays(start, i), s.capacity);
+      addService.run(s.id, s.kind, s.name, s.capacity, s.pricePhp, s.unit);
+      fillPrice.run(s.pricePhp, s.unit, s.id);
     }
     for (const p of island.packages) {
-      addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests);
+      addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests, p.extraDayPhp);
+      fillExtra.run(p.extraDayPhp, p.id);
       for (const it of p.items) addItem.run(p.id, it.service, it.qty, it.perGuest ? 1 : 0);
     }
+  });
+  extendInventory(db, seed.inventoryDays);
+}
+
+// Makes sure every service (or just `serviceId`) has an inventory row for
+// today and the following days; new days start at the service's capacity.
+export function extendInventory(db: Db, days: number, serviceId?: string): void {
+  const addDay = db.prepare('INSERT OR IGNORE INTO inventory (service_id, day, capacity) VALUES (?, ?, ?)');
+  const services = (serviceId
+    ? db.prepare('SELECT id, capacity FROM services WHERE id = ?').all(serviceId)
+    : db.prepare('SELECT id, capacity FROM services').all()) as { id: string; capacity: number }[];
+  const start = today();
+  transaction(db, () => {
+    for (const s of services) for (let i = 0; i < days; i++) addDay.run(s.id, addDays(start, i), s.capacity);
   });
 }
 

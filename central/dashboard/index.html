@@ -1,8 +1,15 @@
 <!doctype html>
 <!--
   central/dashboard/index.html
-  Central admin dashboard, served by central at "/". Data comes from
-  GET /api/admin/summary (login required). Behaviour in app.js, styles in style.css.
+  Central admin dashboard, served by central at "/". One page per feature
+  (sidebar, address #dashboard, #islands, ...), not one long scroll:
+    Dashboard  : summary of every other page
+    Islands    : island nodes, links, response times, bookings per island
+    Bookings   : every island's bookings (central's copies), filterable
+    Inventory  : per-island inventory and activity statistics (synced copy)
+    Accounts   : create and manage island admin accounts
+    Reports    : 7-day trend and the parallel worker-thread benchmark
+  Data comes from /api/admin/* (sign-in required). Behaviour in app.js.
 -->
 <html lang="en">
 <head>
@@ -10,7 +17,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Biliran Booking — Central</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,15 +35,16 @@
 </div>
 
 <div class="layout">
-  <!-- Sidebar navigation -->
+  <!-- Sidebar: one link per page -->
   <aside class="sidebar">
     <div class="brand"><span class="logo">B</span><div><b>Biliran Booking</b><small>Central node</small></div></div>
-    <nav>
-      <a href="#top" class="active"><i data-icon="grid"></i>Dashboard</a>
-      <a href="#islands"><i data-icon="island"></i>Islands</a>
-      <a href="#arrivals"><i data-icon="calendar"></i>Bookings</a>
-      <a href="#activity"><i data-icon="pulse"></i>Activity</a>
-      <a href="#reports"><i data-icon="chart"></i>Reports</a>
+    <nav id="nav">
+      <a href="#dashboard" data-page="dashboard"><i data-icon="grid"></i>Dashboard</a>
+      <a href="#islands" data-page="islands"><i data-icon="island"></i>Islands</a>
+      <a href="#bookings" data-page="bookings"><i data-icon="calendar"></i>Bookings</a>
+      <a href="#inventory" data-page="inventory"><i data-icon="boxes"></i>Inventory</a>
+      <a href="#accounts" data-page="accounts"><i data-icon="users"></i>Accounts</a>
+      <a href="#reports" data-page="reports"><i data-icon="chart"></i>Reports</a>
     </nav>
     <p class="nav-title">Quick links</p>
     <nav class="links">
@@ -50,7 +58,7 @@
     </div>
   </aside>
 
-  <main id="top">
+  <main>
     <!-- Top bar: live status ticker + admin chip -->
     <header class="topbar">
       <div class="ticker glass">
@@ -64,9 +72,9 @@
       </div>
     </header>
 
-    <!-- Row 1: hero banner + greeting -->
-    <section class="row hero-row">
-      <div class="hero glass">
+    <!-- ================= Dashboard (summary) ================= -->
+    <section class="page" id="page-dashboard">
+      <div class="page-head hero-head">
         <svg class="hero-art" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
           <defs>
             <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12212E"/><stop offset=".55" stop-color="#307082"/><stop offset="1" stop-color="#EA9940"/></linearGradient>
@@ -76,83 +84,136 @@
           <circle cx="620" cy="170" r="46" fill="#EA9940" opacity=".85"/>
           <path d="M380 190 L470 95 L520 130 L560 105 L660 190 Z" fill="#12212E" opacity=".85"/>
           <path d="M560 195 Q600 150 650 165 Q700 140 760 195 Z" fill="#1b3446"/>
-          <path d="M300 200 Q340 170 380 185 Q410 175 440 200 Z" fill="#1b3446"/>
           <rect y="190" width="800" height="70" fill="url(#sea)"/>
-          <path d="M0 210 Q40 204 80 210 T160 210 T240 210 T320 210 T400 210 T480 210 T560 210 T640 210 T720 210 T800 210" stroke="#6CA3A2" stroke-width="2" fill="none" opacity=".6"/>
-          <path d="M0 228 Q40 222 80 228 T160 228 T240 228 T320 228 T400 228 T480 228 T560 228 T640 228 T720 228 T800 228" stroke="#ECE7DC" stroke-width="1.5" fill="none" opacity=".25"/>
         </svg>
-        <div class="hero-text">
-          <h1>Biliran Booking System</h1>
-          <p class="lead">Central node · Distributed resort and tour booking</p>
-          <p class="tags">3 islands <span>|</span> Parallel search <span>|</span> Works offline</p>
+        <div class="head-text">
+          <p class="eyebrow">Central node · <span id="date"></span></p>
+          <h1>Dashboard</h1>
+          <p class="lead"><span id="hello">Good day</span>, Central Admin. A summary of every page: islands, bookings, inventory and accounts.</p>
         </div>
       </div>
-      <div class="greet glass">
-        <p class="date"><i data-icon="calendar"></i><span id="date"></span></p>
-        <p class="hello" id="hello">Good day,</p>
-        <h3>Central Admin</h3>
-        <p class="muted">Biliran Booking · Central</p>
-        <div class="greet-foot">
-          <div><small>Island search</small><b id="fanout">—</b></div>
-          <div><small>Last sync</small><b id="lastsync">—</b></div>
+      <section class="row kpis">
+        <div class="kpi glass k1"><span class="kicon"><i data-icon="island"></i></span><div><small>Islands online</small><b id="k-islands">—</b><em id="k-islands-sub"></em></div></div>
+        <div class="kpi glass k2"><span class="kicon"><i data-icon="ticket"></i></span><div><small>Bookings today</small><b id="k-bookings">—</b><em id="k-bookings-sub"></em></div></div>
+        <div class="kpi glass k3"><span class="kicon"><i data-icon="check"></i></span><div><small>Checked in today</small><b id="k-checkins">—</b><em>Guests confirmed at the desk</em></div></div>
+        <div class="kpi glass k4"><span class="kicon"><i data-icon="coin"></i></span><div><small>Revenue (all bookings)</small><b id="k-revenue">—</b><em id="k-revenue-sub"></em></div></div>
+      </section>
+      <div class="sum-grid">
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="island"></i>Island nodes</h3><a class="more" href="#islands">Islands →</a></div>
+          <div id="sum-islands" class="island-cards"></div>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="boxes"></i>Inventory used (7 days)</h3><a class="more" href="#inventory">Inventory →</a></div>
+          <div id="sum-inventory" class="util-list"><p class="empty">Loading…</p></div>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="pulse"></i>Recent activity</h3><a class="more" href="#bookings">Bookings →</a></div>
+          <ul id="feed" class="feed short"></ul>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="calendar"></i>Upcoming arrivals</h3><span class="chip">All islands</span></div>
+          <ul id="arrival-list" class="arrival-list"></ul>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="users"></i>Island accounts</h3><a class="more" href="#accounts">Accounts →</a></div>
+          <div id="sum-accounts" class="util-list"><p class="empty">Loading…</p></div>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><a class="more" href="#reports">Reports →</a></div>
+          <div class="chart-box"><canvas id="c-trend-mini"></canvas></div>
         </div>
       </div>
     </section>
 
-    <!-- Row 2: KPI cards -->
-    <section class="row kpis">
-      <div class="kpi glass k1"><span class="kicon"><i data-icon="island"></i></span><div><small>Islands online</small><b id="k-islands">—</b><em id="k-islands-sub"></em></div></div>
-      <div class="kpi glass k2"><span class="kicon"><i data-icon="ticket"></i></span><div><small>Bookings today</small><b id="k-bookings">—</b><em id="k-bookings-sub"></em></div></div>
-      <div class="kpi glass k3"><span class="kicon"><i data-icon="check"></i></span><div><small>Checked in today</small><b id="k-checkins">—</b><em>Guests confirmed at the desk</em></div></div>
-      <div class="kpi glass k4"><span class="kicon"><i data-icon="seat"></i></span><div><small>Packages bookable today</small><b id="k-seats">—</b><em id="k-seats-sub">Across all islands</em></div></div>
-    </section>
-
-    <!-- Rows 3-5: panels -->
-    <section class="grid">
-      <div class="panel glass islands" id="islands">
-        <div class="panel-head"><h3><i data-icon="island"></i>Island nodes</h3><span class="muted small" id="islands-note"></span></div>
-        <div id="island-cards" class="island-cards"></div>
-      </div>
-
-      <div class="panel glass donut">
-        <div class="panel-head"><h3><i data-icon="pie"></i>Bookings by island</h3><span class="chip">All time</span></div>
-        <div class="donut-wrap"><canvas id="c-island"></canvas><div class="donut-center"><small>Total</small><b id="donut-total">0</b></div></div>
-        <ul id="island-legend" class="legend"></ul>
-      </div>
-
-      <div class="panel glass activity" id="activity">
-        <div class="panel-head"><h3><i data-icon="pulse"></i>Recent activity</h3><span class="chip live">Live</span></div>
-        <ul id="feed" class="feed"></ul>
-      </div>
-
-      <div class="panel glass arrivals" id="arrivals">
-        <div class="panel-head"><h3><i data-icon="calendar"></i>Upcoming arrivals</h3><span class="chip">Online</span></div>
-        <ul id="arrival-list" class="arrival-list"></ul>
-      </div>
-
-      <div class="panel glass actions">
-        <div class="panel-head"><h3><i data-icon="bolt"></i>Quick actions</h3></div>
-        <div class="action-grid">
-          <button class="action" id="a-refresh"><span><i data-icon="refresh"></i></span>Refresh now</button>
-          <button class="action" id="a-speed"><span><i data-icon="gauge"></i></span>Speed test</button>
-          <a class="action" href="/api/packages" target="_blank"><span><i data-icon="search"></i></span>Live search</a>
-          <a class="action" href="/health" target="_blank"><span><i data-icon="heart"></i></span>Health</a>
-          <a class="action" href="https://supabase.com/dashboard/project/xrpkpxxxancrogjddriw/editor" target="_blank" rel="noopener"><span><i data-icon="db"></i></span>Database</a>
-          <a class="action" href="https://github.com/Abylon10/BookingSystem" target="_blank" rel="noopener"><span><i data-icon="code"></i></span>Source</a>
+    <!-- ================= Islands ================= -->
+    <section class="page hidden" id="page-islands">
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Network</p><h1>Islands</h1>
+        <p class="lead">Every island node, how it is connected to central, and how fast it answers.</p></div>
+        <div class="head-actions"><button class="btn light" id="a-speed"><i data-icon="gauge"></i>Speed test</button></div></div>
+      <p id="speed-result" class="speed muted"></p>
+      <div class="two-col">
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="island"></i>Island nodes</h3><span class="muted small" id="islands-note"></span></div>
+          <div id="island-cards" class="island-cards big"></div>
         </div>
-        <p id="speed-result" class="speed muted small"></p>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="pie"></i>Bookings by island</h3><span class="chip">All time</span></div>
+          <div class="donut-wrap"><canvas id="c-island"></canvas><div class="donut-center"><small>Total</small><b id="donut-total">0</b></div></div>
+          <ul id="island-legend" class="legend"></ul>
+        </div>
       </div>
-
-      <div class="panel glass trend" id="reports">
-        <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><span class="chip">Online vs walk-in</span></div>
-        <div class="chart-box"><canvas id="c-trend"></canvas></div>
-      </div>
-
-      <div class="panel glass bars">
+      <div class="panel glass">
         <div class="panel-head"><h3><i data-icon="bars"></i>Bookings by package</h3><span class="chip">All time</span></div>
         <div class="chart-box tall"><canvas id="c-listing"></canvas></div>
       </div>
+    </section>
 
+    <!-- ================= Bookings ================= -->
+    <section class="page hidden" id="page-bookings">
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Records</p><h1>Bookings</h1>
+        <p class="lead">Every booking from every island (online and walk-in), as copied to central.</p></div></div>
+      <div class="panel glass">
+        <form id="bk-filter" class="filters">
+          <input id="bk-q" placeholder="Reference, guest or e-mail">
+          <select id="bk-island"><option value="">All islands</option></select>
+          <select id="bk-status"><option value="">All statuses</option><option>HELD</option><option>CONFIRMED</option><option>CHECKED_IN</option><option>CANCELLED</option><option>RELEASED</option><option>EXPIRED</option></select>
+          <button class="btn primary small" type="submit">Filter</button>
+          <span class="muted small" id="bk-count"></span>
+        </form>
+        <div class="table-wrap">
+          <table class="data"><thead><tr><th>Reference</th><th>Island</th><th>Source</th><th>Booking</th><th>Dates</th><th>Guests</th><th>Guest</th><th>Total</th><th>Refund</th><th>Status</th></tr></thead><tbody id="bk-list"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Inventory ================= -->
+    <section class="page hidden" id="page-inventory">
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Statistics</p><h1>Inventory</h1>
+        <p class="lead">How much of each island's capacity is used, what is switched off, and the activity behind it. Read live from the islands and kept as a copy on central.</p></div>
+        <div class="head-actions">
+          <input type="date" id="inv-day">
+          <select id="inv-days"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select>
+        </div></div>
+      <div id="inv-islands" class="inv-cards"></div>
+      <div class="panel glass">
+        <div class="panel-head"><h3><i data-icon="chart"></i>Capacity used per day</h3><span class="chip">% of units booked</span></div>
+        <div class="chart-box tall"><canvas id="c-inv"></canvas></div>
+      </div>
+      <div id="inv-services"></div>
+    </section>
+
+    <!-- ================= Accounts ================= -->
+    <section class="page hidden" id="page-accounts">
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Administration</p><h1>Accounts</h1>
+        <p class="lead">Create the admin account of each island. Island admins then add their own receptionists. Accounts live on the island, so sign-in works there even offline.</p></div></div>
+      <div class="two-col">
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="plus"></i>Create island account</h3></div>
+          <form id="acc-form" class="acc-form">
+            <label>Island<select id="acc-island" required></select></label>
+            <label>Role<select id="acc-role"><option value="node_admin">Island admin</option><option value="receptionist">Receptionist</option></select></label>
+            <label>Username<input id="acc-user" required placeholder="e.g. maripipi.admin"></label>
+            <label>Password<input id="acc-pass" type="password" required placeholder="8+ characters"></label>
+            <button class="btn primary" type="submit">Create account</button>
+            <p id="acc-result" class="small"></p>
+          </form>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="users"></i>Accounts per island</h3><button class="btn ghost small" id="acc-refresh">Refresh</button></div>
+          <div id="acc-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Reports ================= -->
+    <section class="page hidden" id="page-reports">
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Analysis</p><h1>Reports</h1>
+        <p class="lead">Booking trends and the parallel report benchmark (worker threads).</p></div></div>
+      <div class="panel glass">
+        <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><span class="chip">Online vs walk-in</span></div>
+        <div class="chart-box"><canvas id="c-trend"></canvas></div>
+      </div>
       <div class="panel glass bench">
         <div class="panel-head">
           <h3><i data-icon="gauge"></i>Parallel report (worker threads)</h3>
