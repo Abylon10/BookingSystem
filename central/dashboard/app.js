@@ -260,8 +260,8 @@ async function loadDashboard() {
   $('k-bookings').textContent = k.bookingsToday;
   $('k-bookings-sub').textContent = `${k.onlineToday} online · ${k.walkinToday} walk-in`;
   $('k-checkins').textContent = k.checkedInToday;
-  $('k-revenue').textContent = peso(k.revenuePhp);
-  $('k-revenue-sub').textContent = `refunds ${peso(s.refundsPhp)}`;
+  $('k-revenue').textContent = peso(k.revenueTodayPhp ?? 0);
+  $('k-revenue-sub').textContent = `all bookings ${peso(k.revenuePhp)} · refunds ${peso(s.refundsPhp)}`;
   $('sum-islands').innerHTML = islandCards(s.islands);
 
   // Revenue summary per island (last 30 days), bar = share of the total.

@@ -146,10 +146,11 @@ async function loadDashboard() {
   $('k-in-ratio').textContent = `${o.checkedIn}/${o.arrivals}`;
   $('k-in-ring').style.setProperty('--p', o.arrivals ? Math.round((o.checkedIn / o.arrivals) * 100) : 0);
   $('k-walk').textContent = o.walkins;
-  $('k-walk-sub').textContent = `online ${o.online}`;
+  // Walk-ins, online and revenue count bookings MADE that day (reset at midnight).
+  $('k-walk-sub').textContent = `booked ${isToday ? 'today' : fmtDay(day)} · online ${o.online}`;
   bars($('k-walk-bars'), o.trend.map((t) => t.walkins), 'accent');
   $('k-rev').textContent = peso(o.revenue);
-  $('k-rev-sub').textContent = `online ${peso(o.revenueOnline)} · walk-in ${peso(o.revenueWalkin)}`;
+  $('k-rev-sub').textContent = `booked ${isToday ? 'today' : fmtDay(day)} · online ${peso(o.revenueOnline)} · walk-in ${peso(o.revenueWalkin)}`;
   bars($('k-rev-bars'), o.trend.map((t) => t.revenue), 'ink');
   // Sidebar counters (today only)
   if (isToday) {
@@ -589,7 +590,18 @@ showTab((location.hash || '#dashboard').slice(1));
 
 // Every 3 s: link status, and the dashboard numbers while it is open
 // (online bookings arrive from central without anyone touching this screen).
+// New day at midnight: dates still showing "today" move to the new day, so
+// the daily tallies start again from zero without reloading the page.
+let shownToday = todayStr();
+function rollOverDay() {
+  const now = todayStr();
+  if (now === shownToday) return;
+  for (const id of ['dash-day', 'arr-day', 'w-day', 'cl-day']) if ($(id).value === shownToday) $(id).value = now;
+  shownToday = now;
+  if (currentTab() === 'checkin') loadArrivals().catch(() => {});
+}
 setInterval(() => {
+  rollOverDay();
   if (document.hidden) return;
   if (currentTab() === 'dashboard') loadDashboard().catch(() => {});
   else loadState($('dash-day').value).catch(() => {});

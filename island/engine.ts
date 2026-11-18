@@ -33,7 +33,7 @@
  *    half on the trip date itself, nothing for an unpaid hold.
  */
 import { randomInt, randomUUID, scryptSync, timingSafeEqual, randomBytes } from 'node:crypto';
-import { addDays, today } from '../shared/config.ts';
+import { addDays, dayRangeMs, today } from '../shared/config.ts';
 import { addOutbox, extendInventory, transaction, type Db } from './db.ts';
 
 // An error that carries the HTTP status / RPC code for the caller.
@@ -477,21 +477,35 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
     // Console dashboard for one date: arrivals, check-ins, walk-ins, online,
     // cancellations, refunds, revenue, services switched off, plus a 7-day
     // trend (the 6 days before `day`, then `day`) for the small charts.
+    // Daily tallies for the dashboards. They start from zero every day
+    // (Philippine midnight):
+    //  - arrivals, checked in : guests whose trip starts that day
+    //  - walk-ins, online, revenue : bookings MADE that day (paid)
+    //  - cancelled, refunds   : cancellations made that day
     overview(day: string) {
       const countsFor = (d: string) => {
-        const b = db.prepare(
+        const trip = db.prepare(
           `SELECT
-             SUM(status IN ('CONFIRMED', 'CHECKED_IN'))                                    AS arrivals,
-             SUM(status = 'CHECKED_IN')                                                    AS checkedIn,
-             SUM(source = 'WALKIN' AND status IN ('CONFIRMED', 'CHECKED_IN'))             AS walkins,
-             SUM(source = 'ONLINE' AND status IN ('CONFIRMED', 'CHECKED_IN'))             AS online,
-             SUM(status = 'CANCELLED')                                                     AS cancelled,
-             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') THEN total_php ELSE 0 END) AS revenue,
-             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') AND source = 'ONLINE' THEN total_php ELSE 0 END) AS revenueOnline,
-             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') AND source = 'WALKIN' THEN total_php ELSE 0 END) AS revenueWalkin,
-             SUM(refund_php)                                                               AS refunds
+             SUM(status IN ('CONFIRMED', 'CHECKED_IN')) AS arrivals,
+             SUM(status = 'CHECKED_IN')                 AS checkedIn
            FROM bookings WHERE day = ?`,
         ).get(d) as Record<string, number | null>;
+        const [start, end] = dayRangeMs(d);
+        const made = db.prepare(
+          `SELECT
+             SUM(source = 'WALKIN')                                         AS walkins,
+             SUM(source = 'ONLINE')                                         AS online,
+             SUM(total_php)                                                 AS revenue,
+             SUM(CASE WHEN source = 'ONLINE' THEN total_php ELSE 0 END)     AS revenueOnline,
+             SUM(CASE WHEN source = 'WALKIN' THEN total_php ELSE 0 END)     AS revenueWalkin
+           FROM bookings
+           WHERE created_at >= ? AND created_at < ? AND status IN ('CONFIRMED', 'CHECKED_IN')`,
+        ).get(start, end) as Record<string, number | null>;
+        const undone = db.prepare(
+          `SELECT COUNT(*) AS cancelled, SUM(refund_php) AS refunds FROM bookings
+           WHERE status = 'CANCELLED' AND updated_at >= ? AND updated_at < ?`,
+        ).get(start, end) as Record<string, number | null>;
+        const b = { ...trip, ...made, ...undone };
         const off = (db.prepare('SELECT COUNT(*) AS n FROM service_off WHERE day = ?').get(d) as { n: number }).n;
         return {
           day: d, arrivals: b.arrivals ?? 0, checkedIn: b.checkedIn ?? 0, walkins: b.walkins ?? 0, online: b.online ?? 0,

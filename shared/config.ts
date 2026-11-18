@@ -159,7 +159,27 @@ export function addDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Today's date as "YYYY-MM-DD" (UTC).
+// The resorts' local time: the Philippines (UTC+8, no daylight saving).
+// Everything "today" — dashboards, daily tallies, holds, inventory days —
+// uses this calendar, so daily counts reset at local midnight, not at
+// 8:00 AM (UTC midnight) as they would on a cloud server.
+export const TIME_ZONE = 'Asia/Manila';
+const UTC_OFFSET = '+08:00';
+const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+// Today's date in the Philippines as "YYYY-MM-DD".
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate.format(new Date());
+}
+
+// The Philippine date of a moment (a Date, an ISO text, or milliseconds).
+export function localDay(at: Date | string | number): string {
+  return localDate.format(new Date(at));
+}
+
+// [start, end) of a Philippine calendar day in milliseconds, for "made
+// today" counts on timestamps.
+export function dayRangeMs(day: string): [number, number] {
+  const start = Date.parse(`${day}T00:00:00${UTC_OFFSET}`);
+  return [start, start + 86_400_000];
 }

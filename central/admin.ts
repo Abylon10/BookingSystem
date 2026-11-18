@@ -18,7 +18,7 @@
 import type express from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { addDays, today } from '../shared/config.ts';
+import { addDays, localDay, today } from '../shared/config.ts';
 import { benchmark } from './reports.ts';
 
 // What the admin module needs from server.ts.
@@ -85,7 +85,9 @@ interface Copy {
   extra_days?: number;   // v3: days beyond the package length
 }
 
-const dayOf = (iso: string) => iso.slice(0, 10);
+// The Philippine calendar day of a timestamp, so "today" tallies reset at
+// local midnight (timestamps are stored in UTC).
+const dayOf = (iso: string) => localDay(iso);
 // Bookings that count as sold (not undone holds or cancellations).
 const SOLD = new Set(['HELD', 'CONFIRMED', 'CHECKED_IN']);
 
@@ -154,6 +156,9 @@ export function mountAdmin(app: express.Express, { sb, secret, search, ask, isla
       checkedInToday: copies.filter((c) => c.status === 'CHECKED_IN' && c.day === day).length,
       packagesAvailable: live.packages.filter((p: { available: boolean }) => p.available).length,
       packagesTotal: live.packages.length,
+      // Daily tally: money from bookings made today (resets at midnight);
+      // the all-time total is shown as the card's note.
+      revenueTodayPhp: madeToday.reduce((n, c) => n + c.total_php, 0),
       revenuePhp: sold.reduce((n, c) => n + c.total_php, 0),
     };
 

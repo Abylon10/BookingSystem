@@ -339,7 +339,18 @@ showTab((location.hash || '#arrivals').slice(1));
 
 // Every 5 s: link status and today's numbers; the arrivals list too, so
 // online bookings arriving from central appear without a refresh.
+// New day at midnight: dates still showing "today" move to the new day and
+// the counters start again from zero, without reloading the page.
+let shownToday = todayStr();
+function rollOverDay() {
+  const now = todayStr();
+  if (now === shownToday) return;
+  for (const id of ['arr-day', 'w-day', 'sv-day']) if ($(id).value === shownToday) $(id).value = now;
+  $('today').textContent = new Date().toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' });
+  shownToday = now;
+}
 setInterval(() => {
+  rollOverDay();
   if (document.hidden) return;
   loadState().catch(() => {});
   loadKpis().catch(() => {});

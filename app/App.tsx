@@ -25,7 +25,7 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Booking, Package, Trip } from './src/api';
 import { googleEnabled, hasSavedSession, useAccount, useGoogleEnabled } from './src/auth';
-import { saveBooking } from './src/storage';
+import { markPaid, recentBookingOf, repeatNoticeOff, saveBooking, turnOffRepeatNoticeToday, type SavedBooking } from './src/storage';
 import { loadSettings, syncWithAccount, updateSettings, useSettings, type ThemeChoice } from './src/settings';
 import { remindTrip } from './src/reminders';
 import { applyTheme, colors, shadow, themed, type ThemeMode } from './src/theme';
@@ -40,6 +40,7 @@ import { Confirmation } from './src/screens/Confirmation';
 import { MyBookings } from './src/screens/MyBookings';
 import { Profile } from './src/screens/Profile';
 import { Settings } from './src/screens/Settings';
+import { RepeatNotice } from './src/screens/RepeatNotice';
 
 // Which screen is showing, with the data it needs.
 type Tab = 'explore' | 'mine' | 'account';
@@ -101,6 +102,22 @@ export default function App() {
     if (account && route.name === 'signin') setRoute({ name: 'explore' });
   }, [account, route.name]);
 
+  // Repeat-booking notice: shown before the booking form when this resort
+  // was already booked and paid within 12 hours or earlier today.
+  const [repeat, setRepeat] = useState<{ earlier: SavedBooking; go: () => void } | null>(null);
+  async function startBooking(trip: Trip, back: Route) {
+    const go = () => setRoute({ name: 'form', trip, back });
+    const earlier = (await repeatNoticeOff()) ? null : await recentBookingOf(trip.islandId);
+    if (earlier) setRepeat({ earlier, go });
+    else go();
+  }
+  // Closes the notice; "Don't show this again today" is remembered.
+  function closeRepeat(turnOffToday: boolean, next?: () => void) {
+    if (turnOffToday) void turnOffRepeatNoticeToday();
+    setRepeat(null);
+    next?.();
+  }
+
   // The moon button: switches day / night (saved in Settings).
   const toggleTheme = () => updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' });
 
@@ -133,7 +150,7 @@ export default function App() {
       );
       break;
     case 'package':
-      screen = <PackageDetail pkg={route.pkg} onBack={() => setRoute({ name: 'explore' })} onBook={(trip) => setRoute({ name: 'form', trip, back: route })} />;
+      screen = <PackageDetail pkg={route.pkg} onBack={() => setRoute({ name: 'explore' })} onBook={(trip) => void startBooking(trip, route)} />;
       break;
     case 'form':
       screen = (
@@ -144,7 +161,7 @@ export default function App() {
           // Save the reference as soon as it exists, so the guest can find it
           // again even if the app closes during payment.
           onHeld={(booking) => {
-            saveBooking({ reference: booking.reference, email: booking.email });
+            saveBooking({ reference: booking.reference, email: booking.email, islandId: booking.island_id, resort: booking.package_name, day: booking.day });
             setRoute({ name: 'pay', booking });
           }}
         />
@@ -156,6 +173,7 @@ export default function App() {
           booking={route.booking}
           onPaid={(booking) => {
             void remindTrip(booking); // trip reminder, if switched on in Settings
+            void markPaid(booking.reference); // counts for the repeat-booking notice
             setRoute({ name: 'confirmed', booking, justPaid: true, from: 'explore' });
           }}
           onCancel={() => setRoute({ name: 'explore' })}
@@ -183,6 +201,14 @@ export default function App() {
     <View style={st.root}>
       <StatusBar style={route.name === 'welcome' || route.name === 'loading' || route.name === 'signin' || theme === 'dark' ? 'light' : 'dark'} />
       {screen}
+      {repeat && (
+        <RepeatNotice
+          earlier={repeat.earlier}
+          onBookAgain={(off) => closeRepeat(off, repeat.go)}
+          onViewTrips={(off) => closeRepeat(off, () => setRoute({ name: 'mine' }))}
+          onClose={() => closeRepeat(false)}
+        />
+      )}
       {tab && (
         <View style={st.tabs}>
           <TabButton icon="compass" label="Explore" active={tab === 'explore'} onPress={() => setRoute({ name: 'explore' })} />
