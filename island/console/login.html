@@ -51,8 +51,18 @@
   <script>
     // Island name, whether accounts exist, and an already-valid session.
     const $ = (id) => document.getElementById(id);
+
+    // Reads the island's JSON answer. Anything else (a web page, nothing)
+    // means this page is not talking to the island server: explain how to
+    // fix it instead of showing "Unexpected token …".
+    const NOT_ISLAND = 'This page is not connected to the island server. Open it on the island laptop at '
+      + 'http://localhost:8081 (Biliran), :8082 (Maripipi) or :8083 (Higatangan) while the island is running, '
+      + 'not as a file and not on the Expo or central address.';
+    async function readJson(res) {
+      try { return await res.json(); } catch { throw new Error(NOT_ISLAND); }
+    }
     fetch('/api/session', { headers: { Authorization: `Bearer ${localStorage.getItem('desk-token') || ''}` } })
-      .then((r) => r.json())
+      .then(readJson)
       .then((s) => {
         $('island-title').textContent = s.island.name;
         $('island-id').textContent = s.island.id;
@@ -66,7 +76,8 @@
         };
         photo.src = `img/${s.island.id}.png`;
         if (!s.hasAccounts) $('no-accounts').classList.remove('hidden');
-      });
+      })
+      .catch(() => { $('login-error').textContent = NOT_ISLAND; });
 
     // Sign in: on success keep the token and open the console.
     $('login-form').addEventListener('submit', async (e) => {
@@ -78,13 +89,14 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: $('user').value, password: $('pass').value }),
         });
-        const data = await res.json();
+        const data = await readJson(res);
         if (!res.ok) throw new Error(data.error);
         localStorage.setItem('desk-token', data.token);
         localStorage.setItem('desk-me', JSON.stringify({ user: data.user, role: data.role }));
         location.replace('index.html');
       } catch (err) {
-        $('login-error').textContent = err.message;
+        // TypeError = no answer at all (server not running / wrong address).
+        $('login-error').textContent = err instanceof TypeError ? NOT_ISLAND : err.message;
       } finally {
         $('login-btn').disabled = false;
       }
