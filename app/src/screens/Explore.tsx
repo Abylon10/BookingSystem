@@ -14,17 +14,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { searchPackages, type Package, type SearchResult } from '../api';
 import { HERO_PHOTOS, PackageImage } from '../scene';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle } from '../ui';
 
 // How far ahead guests can book (matches the islands' inventoryDays: 60).
 const TODAY = isoDay(new Date());
 const LAST_DAY = addDays(TODAY, 59);
 
-export function Explore({ day, onDay, onOpen }: {
+export function Explore({ day, onDay, onOpen, theme, onToggleTheme }: {
   day: string;
   onDay: (day: string) => void;
   onOpen: (p: Package) => void;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;   // day / night switch
 }) {
   // Search result, error text, loading flag, filters, calendar sheet.
   const [data, setData] = useState<SearchResult | null>(null);
@@ -85,9 +87,15 @@ export function Explore({ day, onDay, onOpen }: {
             <Image source={require('../../assets/resortify-logo.png')} style={st.logo} />
             <Text style={st.brandName}>Resortify</Text>
           </View>
-          <View style={st.locPill}>
-            <Ionicons name="location" size={14} color={colors.primary} />
-            <Text style={st.locText}>Biliran Province</Text>
+          <View style={st.topRight}>
+            <View style={st.locPill}>
+              <Ionicons name="location" size={14} color="#00537A" />
+              <Text style={st.locText}>Biliran Province</Text>
+            </View>
+            {/* Day / night */}
+            <Pressable onPress={onToggleTheme} style={st.themeBtn} hitSlop={8} accessibilityLabel={theme === 'dark' ? 'Switch to day' : 'Switch to night'}>
+              <Ionicons name={theme === 'dark' ? 'sunny' : 'moon'} size={17} color="#013C58" />
+            </Pressable>
           </View>
         </View>
         <Text style={st.hello}>Discover your</Text>
@@ -205,24 +213,26 @@ function RowCard({ p, onPress }: { p: Package; onPress: () => void }) {
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
 
   // Header block on a light sky background with a rounded bottom
-  header: { backgroundColor: colors.ink, paddingTop: 52, paddingHorizontal: space.md, paddingBottom: space.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, gap: 6, overflow: 'hidden' },
+  header: { backgroundColor: colors.onLight, paddingTop: 52, paddingHorizontal: space.md, paddingBottom: space.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, gap: 6, overflow: 'hidden' },
   headerPhoto: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
   headerShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(1, 60, 88, 0.45)' },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingLeft: 3, paddingRight: 12, paddingVertical: 3 },
   logo: { width: 32, height: 32, borderRadius: 16 },
-  brandName: { color: colors.ink, fontWeight: '800', fontSize: 15, letterSpacing: 0.5 },
+  brandName: { color: colors.onLight, fontWeight: '800', fontSize: 15, letterSpacing: 0.5 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  themeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
   locPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 7 },
-  locText: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  locText: { color: colors.onLight, fontWeight: '700', fontSize: 12 },
   hello: { color: '#E3F6FC', fontSize: 22 },
   helloBold: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: -4 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 52, marginTop: space.md, ...shadow, shadowOpacity: 0.07 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 16, height: 52, marginTop: space.md, ...shadow, shadowOpacity: 0.07 },
   searchInput: { flex: 1, fontSize: 15, color: colors.ink },
-  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 54, marginTop: space.sm },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 16, height: 54, marginTop: space.sm },
   tripLabel: { color: colors.muted, fontSize: 11 },
   tripValue: { color: colors.ink, fontWeight: '700', fontSize: 15 },
 
@@ -232,7 +242,7 @@ const st = StyleSheet.create({
   big: { width: 250, height: 210, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.sky, justifyContent: 'flex-end' },
   shade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(240,240,240,0.55)' },
   tag: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { color: colors.ink, fontSize: 12, fontWeight: '700' },
+  tagText: { color: colors.onLight, fontSize: 12, fontWeight: '700' },
   bigFoot: { backgroundColor: 'rgba(1, 60, 88, 0.78)', padding: 12, gap: 4 },
   bigName: { color: '#fff', fontSize: 16, fontWeight: '800' },
   bigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
@@ -241,7 +251,7 @@ const st = StyleSheet.create({
   bigOff: { color: '#FFC9BD', fontSize: 12, fontWeight: '700', flexShrink: 1 },
 
   // List row
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 10, ...shadow, shadowOpacity: 0.06 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius.md, padding: 10, ...shadow, shadowOpacity: 0.06 },
   thumb: { width: 76, height: 76, borderRadius: 14 },
   rowName: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   rowPlace: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -252,4 +262,4 @@ const st = StyleSheet.create({
 
   empty: { alignItems: 'center', gap: 8, marginTop: space.lg },
   emptyText: { color: colors.muted, textAlign: 'center' },
-});
+}));

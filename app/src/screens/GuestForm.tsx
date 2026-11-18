@@ -13,7 +13,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 import { ApiError, holdBooking, newRequestId, type Booking, type GuestDetails, type Trip } from '../api';
 import type { Account } from '../auth';
 import { PackageImage } from '../scene';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, daysBetween, ErrorBox, Field, Pills, TopBar, tripDates } from '../ui';
 
 // ID types the front desk accepts (matches the island console).
@@ -106,14 +106,14 @@ export function GuestForm({ trip, account, onBack, onHeld }: { trip: Trip; accou
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  summary: { flexDirection: 'row', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 10, alignItems: 'center', ...shadow, shadowOpacity: 0.06 },
+  summary: { flexDirection: 'row', gap: 12, backgroundColor: colors.card, borderRadius: radius.md, padding: 10, alignItems: 'center', ...shadow, shadowOpacity: 0.06 },
   thumb: { width: 84, height: 84, borderRadius: 14 },
   name: { color: colors.ink, fontWeight: '800', fontSize: 16 },
   meta: { color: colors.muted, fontSize: 13 },
   total: { color: colors.primary, fontWeight: '800', fontSize: 16, marginTop: 2 },
   label: { color: colors.ink, fontWeight: '600', fontSize: 13 },
   hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
-});
+}));

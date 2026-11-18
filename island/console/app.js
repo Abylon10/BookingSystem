@@ -109,6 +109,17 @@ $('top-search').addEventListener('submit', (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// Online / Walk-in checkboxes (Check-in and Bookings pages)
+// ---------------------------------------------------------------------------
+
+// Sources ticked in a checkbox group, e.g. {ONLINE, WALKIN}.
+const ticked = (id) => new Set([...document.querySelectorAll(`#${id} input:checked`)].map((c) => c.value));
+// Keeps only the bookings whose source is ticked.
+const bySource = (rows, id) => { const on = ticked(id); return rows.filter((b) => on.has(b.source)); };
+// "3 booking(s) · 2 online · 1 walk-in"
+const countText = (rows) => `${rows.length} booking(s) · ${rows.filter((b) => b.source === 'ONLINE').length} online · ${rows.filter((b) => b.source === 'WALKIN').length} walk-in`;
+
+// ---------------------------------------------------------------------------
 // Dashboard (summary)
 // ---------------------------------------------------------------------------
 
@@ -136,7 +147,7 @@ async function loadDashboard() {
   $('k-walk-sub').textContent = `online ${o.online}`;
   bars($('k-walk-bars'), o.trend.map((t) => t.walkins), 'accent');
   $('k-rev').textContent = peso(o.revenue);
-  $('k-rev-sub').textContent = `refunds ${peso(o.refunds)}`;
+  $('k-rev-sub').textContent = `online ${peso(o.revenueOnline)} · walk-in ${peso(o.revenueWalkin)}`;
   bars($('k-rev-bars'), o.trend.map((t) => t.revenue), 'ink');
   // Sidebar counters (today only)
   if (isToday) {
@@ -199,11 +210,14 @@ async function loadArrivals() {
   const day = $('arr-day').value;
   arrRows = arrQuery ? await api(`/api/bookings?q=${encodeURIComponent(arrQuery)}`) : await api(`/api/bookings?day=${day}`);
   $('arr-title').textContent = arrQuery ? `Search: “${arrQuery}”` : day === todayStr() ? "Today's arrivals" : `Arrivals · ${fmtDay(day)}`;
-  $('arr-count').textContent = `${arrRows.length} booking(s)`;
+  const shownArr = bySource(arrRows, 'arr-src');
+  $('arr-count').textContent = countText(shownArr);
   $('arr-clear').classList.toggle('hidden', !arrQuery);
-  $('arr-list').innerHTML = arrRows.map(arrivalRow).join('')
+  $('arr-list').innerHTML = shownArr.map(arrivalRow).join('')
     || `<tr><td colspan="9" class="muted">${arrQuery ? 'No booking matches that reference or name on this island.' : `No arrivals on ${fmtDay(day)}.`}</td></tr>`;
 }
+$('arr-src').addEventListener('change', () => loadArrivals());
+$('bk-src').addEventListener('change', () => loadBookings());
 $('arr-day').addEventListener('change', () => { arrQuery = ''; $('top-q').value = ''; loadArrivals(); });
 $('arr-clear').addEventListener('click', () => { arrQuery = ''; $('top-q').value = ''; loadArrivals(); });
 $('arr-list').addEventListener('click', (e) => {
@@ -413,7 +427,9 @@ $('cl-services').addEventListener('change', async (e) => {
 let bkRows = [];
 async function loadBookings() {
   bkRows = await api('/api/bookings');
-  $('bk-list').innerHTML = bkRows.map((b) => `<tr class="click" data-ref="${esc(b.reference)}"><td class="ref">${esc(b.reference)}</td>
+  const shownBk = bySource(bkRows, 'bk-src');
+  $('bk-count').textContent = countText(shownBk);
+  $('bk-list').innerHTML = shownBk.map((b) => `<tr class="click" data-ref="${esc(b.reference)}"><td class="ref">${esc(b.reference)}</td>
     <td><span class="badge ${esc(b.source)}">${b.source === 'ONLINE' ? 'Online' : 'Walk-in'}</span></td>
     <td>${esc(b.package_name)}</td><td>${fmtRange(b)}</td><td>${b.guests}</td><td>${esc(b.guest_name)}</td><td>${peso(b.total_php)}</td>
     <td>${b.refund_php ? peso(b.refund_php) : '—'}</td>

@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, cancelBooking, getBooking, type Booking } from '../api';
 import { PackageImage } from '../scene';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
 
 export function Confirmation({ booking: initial, onDone, justPaid }: { booking: Booking; onDone: () => void; justPaid?: boolean }) {
@@ -70,7 +70,7 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
           {/* Dashed tear line, like a ticket stub */}
           <View style={st.tear} />
           <View style={st.passFoot}>
-            <View style={st.idIcon}><Ionicons name="id-card-outline" size={22} color={colors.ink} /></View>
+            <View style={st.idIcon}><Ionicons name="id-card-outline" size={22} color={colors.onLight} /></View>
             <View style={{ flex: 1 }}>
               <Text style={st.idTitle}>{b.guest_name}</Text>
               <Text style={st.idText}>Bring your {b.id_type} ending {b.id_last4}</Text>
@@ -107,10 +107,10 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  pass: { backgroundColor: '#fff', borderRadius: radius.lg, overflow: 'hidden', ...shadow },
+  pass: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: 'hidden', ...shadow },
   passImg: { height: 140 },
   passBody: { padding: space.lg, alignItems: 'center', gap: 8 },
   passLabel: { color: colors.muted, fontSize: 13 },
@@ -118,6 +118,6 @@ const st = StyleSheet.create({
   tear: { borderTopWidth: 2, borderStyle: 'dashed', borderColor: colors.line, marginHorizontal: space.md },
   passFoot: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: space.md, backgroundColor: '#FFF7E0' },
   idIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.sun, alignItems: 'center', justifyContent: 'center' },
-  idTitle: { color: colors.ink, fontWeight: '800', fontSize: 15 },
-  idText: { color: colors.ink, fontSize: 13 },
-});
+  idTitle: { color: colors.onLight, fontWeight: '800', fontSize: 15 },
+  idText: { color: colors.onLight, fontSize: 13 },
+}));

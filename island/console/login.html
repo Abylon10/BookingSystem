@@ -14,8 +14,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Island Sign In</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Day / night: apply the saved theme before the page paints -->
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('desk-theme') || 'light'; } catch (e) {}</script>
 </head>
 <body class="login-page">
+  <button class="theme-btn login-theme" id="theme-btn" type="button" title="Day / night">☾</button>
   <main class="login-wrap">
     <!-- Left: island picture panel with the island name -->
     <section class="login-art">
@@ -86,6 +89,24 @@
         $('login-btn').disabled = false;
       }
     });
+  </script>
+  <script>
+    // Day / night switch, remembered in this browser.
+    (function () {
+      const btn = document.getElementById('theme-btn');
+      const show = () => {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        btn.textContent = dark ? '☀' : '☾';
+        btn.title = dark ? 'Switch to day' : 'Switch to night';
+      };
+      btn.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('desk-theme', next); } catch (e) {}
+        show();
+      });
+      show();
+    })();
   </script>
 </body>
 </html>

@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, payBooking, type Booking } from '../api';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, TopBar, tripDates } from '../ui';
 
 // Payment methods shown to the guest (all simulated).
@@ -116,17 +116,17 @@ function fmt(sec: number | null) {
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, gap: space.md, paddingBottom: 60 },
-  timer: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.ink, borderRadius: radius.md, padding: space.md },
+  timer: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.onLight, borderRadius: radius.md, padding: space.md },
   timerText: { color: '#fff', fontSize: 18, fontWeight: '800' },
   timerRef: { color: '#B9DCEA', marginTop: 2 },
   divider: { height: 1, backgroundColor: colors.line, marginVertical: 2 },
   h: { color: colors.ink, fontWeight: '800', fontSize: 17 },
-  method: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 12, borderWidth: 1.5, borderColor: 'transparent', ...shadow, shadowOpacity: 0.05 },
+  method: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius.md, padding: 12, borderWidth: 1.5, borderColor: 'transparent', ...shadow, shadowOpacity: 0.05 },
   methodOn: { borderColor: colors.primary },
   methodIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.skySoft, alignItems: 'center', justifyContent: 'center' },
   methodText: { flex: 1, color: colors.ink, fontWeight: '600', fontSize: 15 },
   hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
-});
+}));

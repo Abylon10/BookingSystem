@@ -15,7 +15,7 @@ import { ApiError, getBooking, myBookings, type Booking } from '../api';
 import type { Account } from '../auth';
 import { PackageImage } from '../scene';
 import { forgetBooking, loadSaved, saveBooking } from '../storage';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, ErrorBox, Field, Ionicons, isoDay, parseDay, Pills, prettyDay, SectionTitle, StatusBadge } from '../ui';
 
 // One row: either the loaded booking, or the error for that reference.
@@ -109,9 +109,9 @@ export function MyBookings({ account, onOpen, onSignIn }: { account: Account | n
       {/* Sign-in nudge (bookings follow the account to any phone) */}
       {!account && (
         <Pressable onPress={onSignIn} style={st.nudge}>
-          <Ionicons name="logo-google" size={20} color={colors.ink} />
+          <Ionicons name="logo-google" size={20} color={colors.onLight} />
           <Text style={st.nudgeText}>Sign in with Google to see your trips on any phone</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.ink} />
+          <Ionicons name="chevron-forward" size={18} color={colors.onLight} />
         </Pressable>
       )}
 
@@ -220,15 +220,15 @@ function Timeline({ bookings, onOpen }: { bookings: Booking[]; onOpen: (b: Booki
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   title: { color: colors.ink, fontSize: 28, fontWeight: '800' },
   sub: { color: colors.muted },
   nudge: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.sun, borderRadius: radius.md, padding: 14 },
-  nudgeText: { flex: 1, color: colors.ink, fontWeight: '700' },
+  nudgeText: { flex: 1, color: colors.onLight, fontWeight: '700' },
   empty: { alignItems: 'center', gap: 8, marginVertical: space.md },
   emptyText: { color: colors.muted },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 10, ...shadow, shadowOpacity: 0.06 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius.md, padding: 10, ...shadow, shadowOpacity: 0.06 },
   thumb: { width: 76, height: 92, borderRadius: 14 },
   ref: { color: colors.primary, fontWeight: '800', fontSize: 13, letterSpacing: 1 },
   name: { color: colors.ink, fontSize: 15, fontWeight: '800' },
@@ -237,7 +237,7 @@ const st = StyleSheet.create({
   find: { gap: space.sm, marginTop: space.lg },
 
   // Timeline calendar
-  timeline: { backgroundColor: '#fff', borderRadius: radius.md, padding: space.md, gap: 6, ...shadow, shadowOpacity: 0.06 },
+  timeline: { backgroundColor: colors.card, borderRadius: radius.md, padding: space.md, gap: 6, ...shadow, shadowOpacity: 0.06 },
   calHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   calMonth: { color: colors.ink, fontSize: 17, fontWeight: '800' },
   weekRow: { flexDirection: 'row' },
@@ -252,4 +252,4 @@ const st = StyleSheet.create({
   listHead: { color: colors.ink, fontWeight: '800', marginTop: space.sm },
   tlRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   dot: { width: 12, height: 12, borderRadius: 6 },
-});
+}));

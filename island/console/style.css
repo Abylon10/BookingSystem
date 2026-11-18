@@ -271,3 +271,41 @@ tr.click:hover td { background: #f7fafb; }
   .login-art { min-height: 220px; }
   .page-head { padding: 18px; }
 }
+
+/* ===== Online / Walk-in checkboxes ===================================== */
+.src-filter { display: flex; gap: 8px; margin-left: auto; }
+.src-box { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--line); cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--muted); user-select: none; }
+.src-box input { width: 16px; height: 16px; margin: 0; }
+.src-box.on-src:has(input:checked) { border-color: var(--primary); color: var(--primary); background: #e7f0f2; }
+.src-box.walk-src:has(input:checked) { border-color: #d29640; color: #8a5a1c; background: #fbeedb; }
+.on-src input { accent-color: var(--primary); }
+.walk-src input { accent-color: #d29640; }
+
+/* ===== Day / night ======================================================== */
+.theme-btn { width: 38px; height: 38px; border-radius: 50%; padding: 0; display: grid; place-items: center; background: var(--page); color: var(--ink); border: 1px solid var(--line); font-size: 1.05rem; }
+.login-theme { position: fixed; top: 16px; right: 16px; z-index: 5; }
+
+/* Night: dark surfaces, same palette */
+:root[data-theme="dark"] {
+  --ink: #e6eef1; --card: #16242f; --muted: #93a8b3; --line: #26394a; --page: #0d1a23; --nav-active: #1d3644;
+}
+:root[data-theme="dark"] body { background: var(--page); }
+:root[data-theme="dark"] .sidebar, :root[data-theme="dark"] .topbar, :root[data-theme="dark"] .kpi,
+:root[data-theme="dark"] .modal-card, :root[data-theme="dark"] .login-card, :root[data-theme="dark"] .act { background: var(--card); }
+:root[data-theme="dark"] input, :root[data-theme="dark"] select, :root[data-theme="dark"] textarea { background: #0f1e28; color: var(--ink); border-color: var(--line); color-scheme: dark; }
+:root[data-theme="dark"] .search { background: #0f1e28; }
+:root[data-theme="dark"] tr.click:hover td { background: #1b2d3a; }
+:root[data-theme="dark"] .item, :root[data-theme="dark"] .mini, :root[data-theme="dark"] .svc,
+:root[data-theme="dark"] .switch-row, :root[data-theme="dark"] .pkg { border-color: var(--line); }
+:root[data-theme="dark"] .mini.off, :root[data-theme="dark"] .switch-row.is-off { background: #2a1d1b; border-color: #5a3129; }
+:root[data-theme="dark"] .pkg-off, :root[data-theme="dark"] .svc-off { background: #121c24; }
+:root[data-theme="dark"] .pkg .svc-x { background: #1d2a33; }
+:root[data-theme="dark"] .idbox { background: #2b2414; }
+:root[data-theme="dark"] .result { background: #0f1e28; }
+:root[data-theme="dark"] .badge.ONLINE, :root[data-theme="dark"] .src-box.on-src:has(input:checked) { background: #173543; color: #9fd3df; }
+:root[data-theme="dark"] .badge.WALKIN, :root[data-theme="dark"] .src-box.walk-src:has(input:checked) { background: #3a2a14; color: #f0b965; }
+:root[data-theme="dark"] .switch span { background: #3a4b57; }
+:root[data-theme="dark"] .seg { background: #0f1e28; }
+:root[data-theme="dark"] button.ghost, :root[data-theme="dark"] button.link { border-color: var(--line); }
+:root[data-theme="dark"] button.link { color: #9fd3df; }
+:root[data-theme="dark"] .login-page { background: var(--page); }

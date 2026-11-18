@@ -244,7 +244,7 @@ const utilRow = (label, pct, note = '') => `<div class="util"><div class="util-t
 async function loadDashboard() {
   const [s, inv, acc] = await Promise.all([
     admin('/api/admin/summary'),
-    admin(`/api/admin/records?to=${todayStr()}&from=${addDays(todayStr(), -29)}`).catch(() => null),
+    admin(`/api/admin/records?to=${addDays(todayStr(), 30)}&from=${addDays(todayStr(), -29)}`).catch(() => null),
     admin('/api/admin/accounts').catch(() => null),
   ]);
   renderTicker(s);
@@ -591,7 +591,7 @@ function tick() {
   $('hello').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 $('host').textContent = location.host;
-$('rec-to').value = todayStr();
+$('rec-to').value = addDays(todayStr(), 30); // trips booked ahead count too
 $('rec-from').value = addDays(todayStr(), -29);
 admin('/api/admin/islands').then((r) => fillIslandSelect(r.islands)).catch(() => {});
 tick();

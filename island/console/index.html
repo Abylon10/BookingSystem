@@ -5,7 +5,7 @@
     receptionist : Dashboard, Check-in, Walk-in, Services on/off, Bookings (view)
     node admin   : the same, plus cancel/refund, Packages & services, Staff
   The server enforces the same rules (admin-only routes answer 403).
-  Behaviour in app.js, colours and layout in style.css.
+  Behaviour in app.js, colours and layout in style.css (day and night themes).
 -->
 <html lang="en">
 <head>
@@ -13,6 +13,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Island Console</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Day / night: apply the saved theme before the page paints -->
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('desk-theme') || 'light'; } catch (e) {}</script>
 </head>
 <body>
   <!-- Pop-up dialog (booking details, edit service/package, confirm refund) -->
@@ -52,6 +54,7 @@
       <header class="topbar">
         <p class="sync" id="sync-status"><span class="dot"></span>Checking link…</p>
         <form id="top-search" class="search"><input id="top-q" placeholder="Find a booking: reference or guest name" autocomplete="off"><button type="submit" class="icon" title="Search">⌕</button></form>
+        <button class="theme-btn" id="theme-btn" type="button" title="Day / night">☾</button>
         <div class="user"><span class="avatar" id="avatar">?</span><span id="who"></span></div>
       </header>
 
@@ -98,6 +101,10 @@
             <h2 id="arr-title">Today's arrivals</h2>
             <span class="muted small" id="arr-count"></span>
             <button class="link hidden" id="arr-clear">Show the day's arrivals</button>
+            <div class="src-filter" id="arr-src" title="Show online and/or walk-in bookings">
+              <label class="src-box on-src"><input type="checkbox" value="ONLINE" checked><span>Online</span></label>
+              <label class="src-box walk-src"><input type="checkbox" value="WALKIN" checked><span>Walk-in</span></label>
+            </div>
           </div>
           <div class="card flush">
             <table class="arrivals">
@@ -165,6 +172,13 @@
           <div class="page-head">
             <div><p class="eyebrow">Records</p><h1>Bookings</h1><p class="muted" id="bk-hint">Online and walk-in bookings on this island, newest first.</p></div>
           </div>
+          <div class="section-head">
+            <h2>All bookings</h2><span class="muted small" id="bk-count"></span>
+            <div class="src-filter" id="bk-src" title="Show online and/or walk-in bookings">
+              <label class="src-box on-src"><input type="checkbox" value="ONLINE" checked><span>Online</span></label>
+              <label class="src-box walk-src"><input type="checkbox" value="WALKIN" checked><span>Walk-in</span></label>
+            </div>
+          </div>
           <div class="card flush">
             <table><thead><tr><th>Reference</th><th>Source</th><th>Booking</th><th>Dates</th><th>Guests</th><th>Guest</th><th>Total</th><th>Refund</th><th>Status</th><th class="admin-only"></th></tr></thead><tbody id="bk-list"></tbody></table>
           </div>
@@ -205,5 +219,23 @@
     </div>
   </div>
   <script src="app.js"></script>
+  <script>
+    // Day / night switch, remembered in this browser.
+    (function () {
+      const btn = document.getElementById('theme-btn');
+      const show = () => {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        btn.textContent = dark ? '☀' : '☾';
+        btn.title = dark ? 'Switch to day' : 'Switch to night';
+      };
+      btn.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('desk-theme', next); } catch (e) {}
+        show();
+      });
+      show();
+    })();
+  </script>
 </body>
 </html>

@@ -5,17 +5,17 @@
  * Supabase Auth), or keep booking as a guest. Signed in: name, e-mail, and
  * sign out. The account's e-mail fills the booking form and brings the
  * guest's trips to any phone. Facebook sign-in shows once it is enabled in
- * Supabase (EXPO_PUBLIC_FACEBOOK_LOGIN=1).
+ * Supabase (EXPO_PUBLIC_FACEBOOK_LOGIN=1). Also the day / night switch.
  */
 import { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { authConfigured, redirectTo, signIn, signOut, type Account } from '../auth';
-import { colors, radius, shadow, space } from '../theme';
+import { colors, radius, shadow, space, themed } from '../theme';
 import { Button, ErrorBox, Ionicons } from '../ui';
 
 const FACEBOOK = process.env.EXPO_PUBLIC_FACEBOOK_LOGIN === '1';
 
-export function Profile({ account }: { account: Account | null }) {
+export function Profile({ account, theme, onToggleTheme }: { account: Account | null; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +63,19 @@ export function Profile({ account }: { account: Account | null }) {
         </View>
       )}
 
+      {/* Appearance: day / night */}
+      <View style={st.card}>
+        <Text style={st.sectionTitle}>Appearance</Text>
+        <View style={st.seg}>
+          {(['light', 'dark'] as const).map((m) => (
+            <Pressable key={m} onPress={() => m !== theme && onToggleTheme()} style={[st.segBtn, theme === m && st.segOn]}>
+              <Ionicons name={m === 'light' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme === m ? '#fff' : colors.ink} />
+              <Text style={[st.segText, theme === m && { color: '#fff' }]}>{m === 'light' ? 'Day' : 'Night'}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       {/* For the team while setting up Google sign-in */}
       <Text style={st.dev}>Sign-in return address: {redirectTo}</Text>
     </ScrollView>
@@ -77,11 +90,11 @@ function Perk({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   body: { padding: space.md, paddingTop: 60, gap: space.md, paddingBottom: 120 },
   title: { color: colors.ink, fontSize: 28, fontWeight: '800' },
-  card: { backgroundColor: '#fff', borderRadius: radius.lg, padding: space.lg, gap: space.md, alignItems: 'stretch', ...shadow, shadowOpacity: 0.07 },
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: space.lg, gap: space.md, alignItems: 'stretch', ...shadow, shadowOpacity: 0.07 },
   badge: { alignSelf: 'center', width: 76, height: 76, borderRadius: 38, backgroundColor: colors.skySoft, alignItems: 'center', justifyContent: 'center' },
   avatar: { alignSelf: 'center', width: 84, height: 84, borderRadius: 42 },
   avatarEmpty: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
@@ -92,5 +105,10 @@ const st = StyleSheet.create({
   perks: { gap: 8, backgroundColor: colors.skySoft, borderRadius: radius.sm, padding: space.md },
   perk: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   perkText: { color: colors.ink },
+  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '800' },
+  seg: { flexDirection: 'row', backgroundColor: colors.skySoft, borderRadius: radius.pill, padding: 4 },
+  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: radius.pill },
+  segOn: { backgroundColor: colors.primary },
+  segText: { color: colors.ink, fontWeight: '700' },
   dev: { color: colors.muted, fontSize: 11, textAlign: 'center' },
-});
+}));

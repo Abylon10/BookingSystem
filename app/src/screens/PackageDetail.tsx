@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { packageCalendar, quote, searchPackages, type Package, type Service, type Trip } from '../api';
 import { PackageImage, photosFor } from '../scene';
-import { colors, peso, radius, shadow, space } from '../theme';
+import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { addDays, Button, daysBetween, ErrorBox, Ionicons, isoDay, RangeSheet, RoundButton, Stepper, tripDates, type DayStatus } from '../ui';
 
 const TODAY = isoDay(new Date());
@@ -293,21 +293,21 @@ function Fact({ icon, text, warn }: { icon: keyof typeof Ionicons.glyphMap; text
 }
 
 // Styles for this screen.
-const st = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
+const st = themed(() => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.card },
   hero: { height: 340, backgroundColor: colors.sky },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 52, paddingHorizontal: space.md },
   islandTag: { backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
-  islandTagText: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  islandTagText: { color: colors.onLight, fontWeight: '700', fontSize: 12 },
   thumbs: { position: 'absolute', left: space.md, top: 110, gap: 10 },
   thumb: { width: 54, height: 54, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden' },
   thumbOn: { borderColor: '#fff', borderWidth: 3 },
   thumbImg: { width: '100%', height: '100%' },
   priceTag: { position: 'absolute', right: space.md, bottom: 44, backgroundColor: colors.accent, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', ...shadow },
-  priceText: { color: colors.ink, fontWeight: '800', fontSize: 18 },
-  priceUnit: { color: colors.ink, fontSize: 11 },
+  priceText: { color: colors.onLight, fontWeight: '800', fontSize: 18 },
+  priceUnit: { color: colors.onLight, fontSize: 11 },
 
-  sheet: { marginTop: -28, backgroundColor: '#fff', borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 8 },
+  sheet: { marginTop: -28, backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 8 },
   name: { color: colors.ink, fontSize: 24, fontWeight: '800' },
   place: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   placeText: { color: colors.muted },
@@ -327,16 +327,16 @@ const st = StyleSheet.create({
   h: { color: colors.ink, fontSize: 17, fontWeight: '800', marginTop: space.md },
   hint: { color: colors.muted, flex: 1 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 6, borderRadius: 10 },
-  itemOff: { backgroundColor: '#F2F2F2' },
+  itemOff: { backgroundColor: colors.offBg },
   check: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.skySoft, alignItems: 'center', justifyContent: 'center' },
   itemText: { color: colors.ink, flex: 1 },
   itemTextOff: { color: '#9AA6AD', textDecorationLine: 'line-through' },
   offNote: { color: colors.danger, fontWeight: '800', fontSize: 12 },
 
   // Services checklist
-  svc: { backgroundColor: '#fff', borderRadius: radius.md, padding: 12, borderWidth: 1.5, borderColor: colors.line, gap: 10 },
+  svc: { backgroundColor: colors.card, borderRadius: radius.md, padding: 12, borderWidth: 1.5, borderColor: colors.line, gap: 10 },
   svcOn: { borderColor: colors.primary },
-  svcOff: { backgroundColor: '#F2F2F2' },
+  svcOff: { backgroundColor: colors.offBg },
   svcMain: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   svcName: { color: colors.ink, fontWeight: '700', fontSize: 15 },
   svcPrice: { color: colors.muted, fontSize: 13 },
@@ -349,9 +349,9 @@ const st = StyleSheet.create({
 
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: space.md,
-    backgroundColor: '#fff', paddingHorizontal: space.md, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: colors.line,
+    backgroundColor: colors.card, paddingHorizontal: space.md, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: colors.line,
   },
   barLabel: { color: colors.muted, fontSize: 12 },
   barTotal: { color: colors.primary, fontWeight: '800', fontSize: 22 },
   barSub: { color: colors.muted, fontSize: 11 },
-});
+}));

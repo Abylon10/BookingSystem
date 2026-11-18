@@ -13,7 +13,8 @@
  *   Account (tab)   : Google sign-in
  *
  * The bottom tab bar switches between Explore, My trips and Account; it is
- * hidden while booking.
+ * hidden while booking. Day / night is switched on Explore or Account and
+ * saved on the phone.
  */
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,7 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Booking, Package, Trip } from './src/api';
 import { useAccount } from './src/auth';
 import { saveBooking } from './src/storage';
-import { colors, shadow } from './src/theme';
+import { applyTheme, colors, shadow, themed, type ThemeMode } from './src/theme';
 import { Ionicons, isoDay } from './src/ui';
 import { Welcome } from './src/screens/Welcome';
 import { Explore } from './src/screens/Explore';
@@ -44,8 +45,9 @@ type Route =
   | { name: 'pay'; booking: Booking }
   | { name: 'confirmed'; booking: Booking; justPaid: boolean; from: Tab };
 
-// Remembers that the welcome screen was seen on this phone.
+// Remembers that the welcome screen was seen on this phone, and day/night.
 const WELCOME_KEY = 'seen-welcome';
+const THEME_KEY = 'app-theme';
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: 'loading' });
@@ -53,19 +55,33 @@ export default function App() {
   const [day, setDay] = useState(isoDay(new Date()));
   // Signed-in guest (Google), or null.
   const account = useAccount();
+  // Day or night (saved on the phone).
+  const [theme, setTheme] = useState<ThemeMode>('light');
 
   // First launch → welcome screen; afterwards straight to Explore.
+  // Also applies the saved day/night choice before the first screen shows.
   useEffect(() => {
-    AsyncStorage.getItem(WELCOME_KEY)
-      .then((seen) => setRoute(seen ? { name: 'explore' } : { name: 'welcome' }))
+    AsyncStorage.multiGet([WELCOME_KEY, THEME_KEY])
+      .then(([[, seen], [, saved]]) => {
+        if (saved === 'dark') { applyTheme('dark'); setTheme('dark'); }
+        setRoute(seen ? { name: 'explore' } : { name: 'welcome' });
+      })
       .catch(() => setRoute({ name: 'welcome' }));
   }, []);
+
+  // Switches day / night: new palette and styles, re-render, remember it.
+  const toggleTheme = () => {
+    const next: ThemeMode = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    setTheme(next);
+    AsyncStorage.setItem(THEME_KEY, next).catch(() => {});
+  };
 
   // Picks the screen for the current route.
   let screen;
   switch (route.name) {
     case 'loading':
-      screen = <View style={{ flex: 1, backgroundColor: colors.ink }} />;
+      screen = <View style={{ flex: 1, backgroundColor: colors.onLight }} />;
       break;
     case 'welcome':
       screen = (
@@ -77,7 +93,7 @@ export default function App() {
       break;
     case 'explore':
       screen = (
-        <Explore day={day} onDay={setDay} onOpen={(pkg) => setRoute({ name: 'package', pkg })} />
+        <Explore day={day} onDay={setDay} onOpen={(pkg) => setRoute({ name: 'package', pkg })} theme={theme} onToggleTheme={toggleTheme} />
       );
       break;
     case 'package':
@@ -114,7 +130,7 @@ export default function App() {
       screen = <MyBookings account={account} onSignIn={() => setRoute({ name: 'account' })} onOpen={(booking) => setRoute({ name: 'confirmed', booking, justPaid: false, from: 'mine' })} />;
       break;
     case 'account':
-      screen = <Profile account={account} />;
+      screen = <Profile account={account} theme={theme} onToggleTheme={toggleTheme} />;
       break;
   }
 
@@ -123,7 +139,7 @@ export default function App() {
 
   return (
     <View style={st.root}>
-      <StatusBar style={route.name === 'welcome' || route.name === 'loading' ? 'light' : 'dark'} />
+      <StatusBar style={route.name === 'welcome' || route.name === 'loading' || theme === 'dark' ? 'light' : 'dark'} />
       {screen}
       {tab && (
         <View style={st.tabs}>
@@ -149,14 +165,14 @@ function TabButton({ icon, label, active, onPress }: { icon: 'compass' | 'ticket
 }
 
 // Styles for the root and tab bar.
-const st = StyleSheet.create({
+const st = themed(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   tabs: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', backgroundColor: '#fff',
+    position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', backgroundColor: colors.card,
     paddingTop: 10, paddingBottom: 26, borderTopLeftRadius: 24, borderTopRightRadius: 24, ...shadow,
   },
   tab: { flex: 1, alignItems: 'center' },
   tabPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
   tabPillOn: { backgroundColor: colors.primary },
   tabText: { color: '#fff', fontWeight: '700' },
-});
+}));

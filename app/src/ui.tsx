@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BookingStatus } from './api';
-import { colors, radius, shadow, space } from './theme';
+import { colors, radius, shadow, space, themed } from './theme';
 
 // Re-exported so screens import icons from one place.
 export { Ionicons };
@@ -85,7 +85,7 @@ export function Button({ label, onPress, busy, disabled, variant = 'primary', ic
 }) {
   const off = disabled || busy;
   const bg = { primary: colors.primary, accent: colors.accent, ghost: 'transparent', danger: 'transparent', light: '#fff' }[variant];
-  const fg = { primary: '#fff', accent: colors.ink, ghost: colors.primary, danger: colors.danger, light: colors.ink }[variant];
+  const fg = { primary: '#fff', accent: colors.onLight, ghost: colors.primary, danger: colors.danger, light: colors.onLight }[variant];
   return (
     <Pressable
       onPress={onPress}
@@ -203,8 +203,8 @@ export function ErrorBox({ message, tone = 'error' }: { message: string | null; 
   if (!message) return null;
   return (
     <View style={[s.msg, tone === 'notice' && s.notice]}>
-      <Ionicons name={tone === 'notice' ? 'information-circle' : 'alert-circle'} size={18} color={tone === 'notice' ? colors.ink : colors.danger} />
-      <Text style={[s.msgText, tone === 'notice' && { color: colors.ink }]}>{message}</Text>
+      <Ionicons name={tone === 'notice' ? 'information-circle' : 'alert-circle'} size={18} color={tone === 'notice' ? colors.onLight : colors.danger} />
+      <Text style={[s.msgText, tone === 'notice' && { color: colors.onLight }]}>{message}</Text>
     </View>
   );
 }
@@ -397,11 +397,11 @@ export function RangeSheet({ open, onClose, title = 'Reservation dates', summary
 // ===========================================================================
 // Styles
 // ===========================================================================
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   // Top bar
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 52, paddingHorizontal: space.md, paddingBottom: space.sm, gap: space.sm },
   topTitle: { flex: 1, textAlign: 'center', color: colors.ink, fontSize: 17, fontWeight: '700' },
-  round: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', ...shadow, shadowOpacity: 0.1 },
+  round: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadow, shadowOpacity: 0.1 },
 
   // Buttons
   btn: { borderRadius: radius.pill, paddingVertical: 15, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', minHeight: 54 },
@@ -410,20 +410,20 @@ const s = StyleSheet.create({
 
   // Fields
   label: { color: colors.ink, fontWeight: '600', fontSize: 13 },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14 },
   input: { flex: 1, paddingVertical: 13, fontSize: 16, color: colors.ink },
   fieldError: { color: colors.danger, fontSize: 12 },
 
   // Chips
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.line },
-  pillOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
+  pillOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   pillText: { color: colors.ink, fontSize: 13, fontWeight: '600' },
   pillTextOn: { color: '#fff' },
   dot: { width: 7, height: 7, borderRadius: 4 },
 
   // Stepper
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 18, borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 16, height: 54, backgroundColor: '#fff' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 18, borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 16, height: 54, backgroundColor: colors.card },
   stepValue: { color: colors.ink, fontSize: 20, fontWeight: '700', minWidth: 18, textAlign: 'center' },
 
   // Badge, rows, card, section, messages
@@ -462,7 +462,7 @@ const s = StyleSheet.create({
 
   // Bottom sheet
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(1, 60, 88, 0.35)' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.md, paddingBottom: 40 },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.md, paddingBottom: 40 },
   sheetHandle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: space.md },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
-});
+}));

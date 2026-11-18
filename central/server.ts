@@ -262,9 +262,18 @@ app.get('/api/islands/:id', (req, res) => {
 
 // Liveness check used by the app, tests, the cloud host, and the islands'
 // keep-awake ping. Also lists which islands are connected over a link.
-app.get('/health', (_req, res) => res.json({
-  ok: true, supabase: Boolean(sb), linkedIslands: [...links].filter(([, p]) => p.open).map(([id]) => id),
-}));
+// A browser gets the designed page (central/dashboard/health.html); programs
+// (islands' keep-awake ping, tests) and ?format=json get the JSON.
+app.get('/health', (req, res) => {
+  if (req.query.format !== 'json' && req.accepts(['json', 'html']) === 'html') {
+    return res.sendFile(join(ROOT, 'central', 'dashboard', 'health.html'));
+  }
+  res.json({
+    ok: true, supabase: Boolean(sb), linkedIslands: [...links].filter(([, p]) => p.open).map(([id]) => id),
+    islands: islands.map((i) => ({ id: i.id, name: i.name, prefix: i.prefix, builtIn: i.builtIn, linked: Boolean(links.get(i.id)?.open) })),
+    uptimeSeconds: Math.round(process.uptime()), serverTime: new Date().toISOString(),
+  });
+});
 
 // Search: GET /api/packages?day=YYYY-MM-DD&guests=2[&extraDays=1][&days=2][&mode=sequential]
 const searchRoute: express.RequestHandler = async (req, res) => {

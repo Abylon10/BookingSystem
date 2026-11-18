@@ -446,13 +446,16 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
              SUM(source = 'ONLINE' AND status IN ('CONFIRMED', 'CHECKED_IN'))             AS online,
              SUM(status = 'CANCELLED')                                                     AS cancelled,
              SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') THEN total_php ELSE 0 END) AS revenue,
+             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') AND source = 'ONLINE' THEN total_php ELSE 0 END) AS revenueOnline,
+             SUM(CASE WHEN status IN ('CONFIRMED', 'CHECKED_IN') AND source = 'WALKIN' THEN total_php ELSE 0 END) AS revenueWalkin,
              SUM(refund_php)                                                               AS refunds
            FROM bookings WHERE day = ?`,
         ).get(d) as Record<string, number | null>;
         const off = (db.prepare('SELECT COUNT(*) AS n FROM service_off WHERE day = ?').get(d) as { n: number }).n;
         return {
           day: d, arrivals: b.arrivals ?? 0, checkedIn: b.checkedIn ?? 0, walkins: b.walkins ?? 0, online: b.online ?? 0,
-          cancelled: b.cancelled ?? 0, revenue: b.revenue ?? 0, refunds: b.refunds ?? 0, servicesOff: off,
+          cancelled: b.cancelled ?? 0, revenue: b.revenue ?? 0, revenueOnline: b.revenueOnline ?? 0, revenueWalkin: b.revenueWalkin ?? 0,
+          refunds: b.refunds ?? 0, servicesOff: off,
         };
       };
       const trend = Array.from({ length: 7 }, (_, i) => countsFor(addDays(day, i - 6)));

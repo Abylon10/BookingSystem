@@ -149,9 +149,6 @@ main { padding: 18px 24px 28px; min-width: 0; }
     "bar bar bar bar bar bar bar bar bar act act act"
     "ben ben ben ben ben ben ben ben ben ben ben ben";
 }
-.islands { grid-area: isl; } .donut { grid-area: don; } .activity { grid-area: act; }
-.arrivals { grid-area: arr; } .actions { grid-area: qa; } .trend { grid-area: tr; } .bars { grid-area: bar; }
-.bench { grid-area: ben; }
 .bench-controls { display: flex; gap: 8px; align-items: center; }
 .bench-controls select {
   font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 8px;

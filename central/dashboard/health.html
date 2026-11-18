@@ -1,0 +1,125 @@
+<!doctype html>
+<!--
+  central/dashboard/health.html
+  Health check page shown to browsers at /health (programs that ask for JSON,
+  like the islands' keep-awake ping and the tests, still get JSON). It reads
+  /health?format=json every 5 seconds and shows: central up, database, each
+  island's link, uptime and server time. Follows the dashboard's day/night.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resortify · System health</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('central-theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
+  <style>
+    /* Palette (same as the dashboard): night by default, day when chosen */
+    :root { --bg: #0b1720; --card: rgba(18, 33, 46, .78); --text: #e8eef0; --muted: #93a8b3; --line: rgba(108, 163, 162, .25);
+            --ok: #4fbf8f; --bad: #e0705a; --warn: #EA9940; --primary: #307082; --secondary: #6CA3A2; }
+    :root[data-theme="light"] { --bg: #eef3f5; --card: #ffffff; --text: #12212E; --muted: #5b6b75; --line: rgba(48, 112, 130, .18); }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font: 15px/1.5 Inter, system-ui, sans-serif; color: var(--text);
+           background: radial-gradient(900px 500px at 80% -10%, rgba(48, 112, 130, .35), transparent 60%), var(--bg); }
+    main { max-width: 920px; margin: 0 auto; padding: 32px 20px 48px; display: grid; gap: 18px; }
+    a { color: var(--secondary); }
+
+    /* Header: big status light + title */
+    .hero { display: flex; align-items: center; gap: 22px; padding: 26px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+    .pulse { width: 74px; height: 74px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--ok); color: #fff; font-size: 34px;
+             box-shadow: 0 0 0 0 rgba(79, 191, 143, .6); animation: pulse 2s infinite; }
+    .pulse.bad { background: var(--bad); animation: none; }
+    .pulse.warn { background: var(--warn); }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 191, 143, .55); } 70% { box-shadow: 0 0 0 18px rgba(79, 191, 143, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 191, 143, 0); } }
+    .eyebrow { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--warn); }
+    h1 { margin: 2px 0 4px; font-size: 32px; font-weight: 800; letter-spacing: -.02em; }
+    .lead { margin: 0; color: var(--muted); }
+
+    /* Stat tiles */
+    .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .tile { padding: 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+    .tile small { color: var(--muted); display: block; }
+    .tile b { font-size: 22px; }
+    .ok-text { color: var(--ok); } .bad-text { color: var(--bad); }
+
+    /* Island links */
+    .card { padding: 18px 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+    .card h2 { margin: 0 0 12px; font-size: 17px; }
+    .isl { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+    .isl:first-of-type { border-top: 0; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 5px rgba(224, 112, 90, .15); }
+    .dot.on { background: var(--ok); box-shadow: 0 0 0 5px rgba(79, 191, 143, .15); }
+    .isl b { display: block; }
+    .isl span { color: var(--muted); font-size: 13px; }
+    .tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: rgba(224, 112, 90, .18); color: var(--bad); }
+    .tag.on { background: rgba(79, 191, 143, .18); color: var(--ok); }
+    .foot { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    @media (max-width: 700px) { .tiles { grid-template-columns: 1fr 1fr; } .hero { flex-direction: column; text-align: center; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="pulse" id="light">✓</div>
+      <div>
+        <p class="eyebrow">Resortify · Central node</p>
+        <h1 id="headline">Checking…</h1>
+        <p class="lead" id="summary">Asking central how everything is.</p>
+      </div>
+    </section>
+
+    <section class="tiles">
+      <div class="tile"><small>Central</small><b id="t-central">—</b></div>
+      <div class="tile"><small>Database</small><b id="t-db">—</b></div>
+      <div class="tile"><small>Islands linked</small><b id="t-islands">—</b></div>
+      <div class="tile"><small>Up for</small><b id="t-uptime">—</b></div>
+    </section>
+
+    <section class="card">
+      <h2>Island nodes</h2>
+      <div id="islands"></div>
+    </section>
+
+    <p class="foot"><span id="checked">—</span><span><a href="/">Open the dashboard</a> · <a href="/health?format=json">Raw JSON</a></span></p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    // 3725 s -> "1 h 2 min"
+    const span = (s) => s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 86400)} d ${Math.floor((s % 86400) / 3600)} h`;
+
+    async function check() {
+      try {
+        const h = await (await fetch('/health?format=json', { cache: 'no-store' })).json();
+        const islands = h.islands ?? [];
+        const linked = islands.filter((i) => i.linked).length;
+        const all = linked === islands.length && h.supabase;
+        $('light').className = `pulse ${all ? '' : 'warn'}`;
+        $('light').textContent = all ? '✓' : '!';
+        $('headline').textContent = all ? 'All systems running'
+          : linked < islands.length ? (linked ? 'Running, some islands offline' : 'Central is up, no islands linked')
+          : 'Running, database not connected';
+        $('summary').textContent = `Central answers, ${h.supabase ? 'the database is connected' : 'the database is not configured'}, ${linked} of ${islands.length} island nodes are linked.`;
+        $('t-central').innerHTML = '<span class="ok-text">Online</span>';
+        $('t-db').innerHTML = h.supabase ? '<span class="ok-text">Connected</span>' : '<span class="bad-text">Not set</span>';
+        $('t-islands').textContent = `${linked} / ${islands.length}`;
+        $('t-uptime').textContent = span(h.uptimeSeconds ?? 0);
+        $('islands').innerHTML = islands.map((i) => `<div class="isl"><span class="dot ${i.linked ? 'on' : ''}"></span>
+          <div><b>${esc(i.name)}</b><span>${esc(i.id)} · references ${esc(i.prefix)}-…${i.builtIn ? '' : ' · registered'}</span></div>
+          <span class="tag ${i.linked ? 'on' : ''}">${i.linked ? 'Linked' : 'Offline'}</span></div>`).join('');
+        $('checked').textContent = `Checked ${new Date().toLocaleTimeString()} · server time ${new Date(h.serverTime).toLocaleTimeString()} · refreshes every 5 s`;
+      } catch (err) {
+        $('light').className = 'pulse bad';
+        $('light').textContent = '✕';
+        $('headline').textContent = 'Central is not answering';
+        $('summary').textContent = 'The server may be asleep (free hosting wakes up in about a minute) or down.';
+        $('t-central').innerHTML = '<span class="bad-text">Down</span>';
+      }
+    }
+    check();
+    setInterval(check, 5000);
+  </script>
+</body>
+</html>
