@@ -22,7 +22,7 @@ import { ErrorBox, Ionicons, isoDay, Pills, SectionTitle } from '../ui';
 export function Explore({ onOpen, theme, onToggleTheme, account, onLogin }: {
   onOpen: (p: Package) => void;
   account: Account | null;     // signed-in guest, or null
-  onLogin: () => void;         // opens the sign-in screen
+  onLogin?: () => void;        // opens the sign-in screen (absent while Google sign-in is off)
   theme: 'light' | 'dark';
   onToggleTheme: () => void;   // day / night switch
 }) {
@@ -88,8 +88,8 @@ export function Explore({ onOpen, theme, onToggleTheme, account, onLogin }: {
             {account ? (
               // Signed in: first letter of the name.
               <View style={st.avatar}><Text style={st.avatarText}>{account.name.slice(0, 1).toUpperCase()}</Text></View>
-            ) : (
-              // Signed out: Log in (Google).
+            ) : onLogin && (
+              // Signed out: Log in (Google), shown only while Google sign-in is on.
               <Pressable onPress={onLogin} style={st.loginBtn} hitSlop={6}>
                 <Ionicons name="logo-google" size={14} color="#013C58" />
                 <Text style={st.locText}>Log in</Text>

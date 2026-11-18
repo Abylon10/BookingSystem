@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { packageCalendar, quote, searchPackages, type Package, type Service, type Trip } from '../api';
 import { PackageImage, photosFor } from '../scene';
+import { getSettings } from '../settings';
 import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { addDays, Button, daysBetween, ErrorBox, Ionicons, isoDay, RangeSheet, RoundButton, Stepper, tripDates, type DayStatus } from '../ui';
 
@@ -38,7 +39,8 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   const [pkg, setPkg] = useState(initial);
   const [services, setServices] = useState<Service[]>([]);
   // Shared choices: guests and first day.
-  const [guests, setGuests] = useState(Math.min(2, initial.max_guests));
+  // Starts at the guest count chosen in Settings (capped by the package).
+  const [guests, setGuests] = useState(Math.max(1, Math.min(getSettings().defaultGuests, initial.max_guests)));
   const [day, setDay] = useState(initial.day);
   // Package: extra hours. Build your own: last day and quantities (0 = not ticked).
   const [extra, setExtra] = useState(0);

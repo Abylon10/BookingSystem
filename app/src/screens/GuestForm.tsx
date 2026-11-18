@@ -12,6 +12,7 @@ import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, holdBooking, newRequestId, type Booking, type GuestDetails, type Trip } from '../api';
 import type { Account } from '../auth';
+import { getSettings, updateSettings } from '../settings';
 import { PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, daysBetween, ErrorBox, Field, Pills, TopBar, tripDates } from '../ui';
@@ -20,10 +21,14 @@ import { Button, daysBetween, ErrorBox, Field, Pills, TopBar, tripDates } from '
 const ID_TYPES = ['PhilSys ID', 'Passport', "Driver's License", 'UMID', 'Student ID'];
 
 export function GuestForm({ trip, account, onBack, onHeld }: { trip: Trip; account: Account | null; onBack: () => void; onHeld: (b: Booking) => void }) {
-  // Form values (name and e-mail from the account when signed in) and errors.
+  // Form values: name and e-mail from the account when signed in, otherwise
+  // the details remembered in Settings (if the guest allows it); errors.
+  const saved = getSettings();
+  const mem = saved.rememberDetails ? saved.details : null;
   const [form, setForm] = useState<GuestDetails>({
-    guestName: account?.name && account.name !== account.email ? account.name : '', email: account?.email ?? '',
-    phone: '', idType: ID_TYPES[0], idLast4: '',
+    guestName: account?.name && account.name !== account.email ? account.name : mem?.guestName ?? '',
+    email: account?.email ?? mem?.email ?? '',
+    phone: mem?.phone ?? '', idType: mem?.idType && ID_TYPES.includes(mem.idType) ? mem.idType : ID_TYPES[0], idLast4: '',
   });
   const [errors, setErrors] = useState<Partial<Record<keyof GuestDetails, string>>>({});
   const [busy, setBusy] = useState(false);
@@ -58,6 +63,10 @@ export function GuestForm({ trip, account, onBack, onHeld }: { trip: Trip; accou
       const booking = await holdBooking(requestId.current, trip, {
         ...form, guestName: form.guestName.trim(), email: form.email.trim(), idLast4: form.idLast4.trim(),
       });
+      // Remember the details for next time (never the ID digits), if allowed.
+      if (getSettings().rememberDetails && !account) {
+        updateSettings({ details: { guestName: form.guestName.trim(), email: form.email.trim(), phone: form.phone.trim(), idType: form.idType } });
+      }
       onHeld(booking);
     } catch (err) {
       const e = err as ApiError;

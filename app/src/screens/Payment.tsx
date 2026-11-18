@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, payBooking, type Booking } from '../api';
+import { getSettings } from '../settings';
 import { colors, peso, radius, shadow, space, themed } from '../theme';
 import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, TopBar, tripDates } from '../ui';
 
@@ -20,7 +21,8 @@ const METHODS: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap
 ];
 
 export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPaid: (b: Booking) => void; onCancel: () => void }) {
-  const [method, setMethod] = useState(METHODS[0].id);
+  // Starts on the payment method preferred in Settings.
+  const [method, setMethod] = useState<string>(getSettings().payMethod ?? METHODS[0].id);
   const [busy, setBusy] = useState<'pay' | 'fail' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [released, setReleased] = useState(false);

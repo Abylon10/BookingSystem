@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Project Development Tracker — Biliran Resort &amp; Tour Booking System</title>
+<title>Project Development Tracker — Resortify (Biliran Resort &amp; Tour Booking System)</title>
 <style>
   @page { size: A4 landscape; margin: 8mm 8mm 10mm;
     @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 7pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
-    @bottom-left { content: "Project Development Tracker — Biliran Resort & Tour Booking System — status as of 29 Oct 2026"; font: 7pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
+    @bottom-left { content: "Project Development Tracker — Resortify — status as of 19 Nov 2026"; font: 7pt "Segoe UI", Arial, sans-serif; color: #5B6B75; }
   }
   :root { --ink:#12212E; --primary:#307082; --secondary:#6CA3A2; --sand:#ECE7DC; --accent:#EA9940; --muted:#5B6B75; --line:#cfd8d6; }
   * { box-sizing: border-box; }
@@ -57,14 +57,14 @@
 <body>
 
 <div class="head">
-  <div class="title"><div class="k">Project</div><div class="v">Biliran Resort &amp; Tour Booking System</div></div>
+  <div class="title"><div class="k">Project</div><div class="v">Resortify — Biliran Resort &amp; Tour Booking System</div></div>
   <div><div class="k">Instructor</div><div class="v">Engr. Eunel O. Peñaranda</div></div>
   <div><div class="k">Course</div><div class="v">Parallel and Distributed System</div></div>
   <div><div class="k">Date</div><div class="v">October 26 – November 20</div></div>
 </div>
 <div class="meta">
   <div><b>Team:</b> Member A — central node &amp; integration · Member B — island node · Member C — mobile app · Member D — consoles, reports &amp; testing</div>
-  <div class="legend"><span><i class="sw" style="background:#307082"></i>Done</span><span><i class="sw" style="background:#6CA3A2"></i>Ongoing</span><span><i class="sw" style="background:#d5e6e6"></i>Planned</span><span><i class="sw" style="background:#fff;box-shadow:inset 0 0 0 .5mm #EA9940"></i>Today (29 Oct)</span></div>
+  <div class="legend"><span><i class="sw" style="background:#307082"></i>Done</span><span><i class="sw" style="background:#6CA3A2"></i>Ongoing</span><span><i class="sw" style="background:#d5e6e6"></i>Planned</span><span><i class="sw" style="background:#fff;box-shadow:inset 0 0 0 .5mm #EA9940"></i>Today (19 Nov)</span></div>
 </div>
 
 <table id="tracker">
@@ -78,33 +78,32 @@
 </table>
 
 <div class="pagebreak"></div>
-<h2>Evidence attached (status as of 29 October 2026)</h2>
+<h2>Evidence attached (status as of 19 November 2026)</h2>
 <div class="two">
   <div>
     <table class="small">
-      <thead><tr><th class="l" style="width:24%">Task</th><th class="l">File / evidence (repository github.com/Abylon10/BookingSystem)</th></tr></thead>
+      <thead><tr><th class="l" style="width:22%">Task</th><th class="l">File / evidence (repository github.com/Abylon10/BookingSystem)</th></tr></thead>
       <tbody>
-        <tr><td>1.1, 1.1.1, 1.2</td><td><b>docs/System-Design-and-Initial-Considerations.pdf</b> §1 Introduction, §2 Objectives, §3 Scope and limitations, §6 Roles, §4.1 and §13 parallel/distributed components; §18 team roles</td></tr>
-        <tr><td>2.1</td><td>Same document §4 conceptual framework (IPO), §5 architecture diagram, §8 flowcharts, §9 sequence diagrams; short version <b>docs/Framework-and-Flowcharts.pdf</b></td></tr>
-        <tr><td>2.2</td><td>Same document §5.1 module list, §5.2 interfaces, §5.3 data flow, §11 data model (ERD), §15 technology stack; gRPC contract <b>proto/booking.proto</b></td></tr>
-        <tr><td>2.3</td><td><b>docs/Task-2.3-Initial-System-Framework.pdf</b> — single upload: framework document, architecture diagram, workflow, module list, technology stack, and the 11 short review slides (also separately: docs/Framework-Review-Slides.pdf)</td></tr>
-        <tr><td>3.1</td><td>Baseline prototype, source version git tag <b>baseline-v1-2026-10-29</b>. Screenshot: <b>docs/evidence/2026-10-29-baseline-island-console.png</b> (right)</td></tr>
-        <tr><td>4.1, 4.2, 5.2</td><td>Preliminary measurements from the prototype (local laptop, 150 ms simulated link): parallel search 2.93× faster than sequential (180 ms vs 527 ms, 10 runs each); 30 concurrent bookings for 6 rooms → exactly 6 booked, 0 oversold; parallel double check-in → exactly one success</td></tr>
-        <tr><td>6.1</td><td><b>README.md</b> (setup), <b>DESIGN.md</b> (v2 design), every code block commented</td></tr>
+        <tr><td>1.1 – 2.3</td><td><b>docs/System-Design-and-Initial-Considerations.pdf</b>, <b>docs/Framework-and-Flowcharts.pdf</b>, <b>docs/Task-2.3-Initial-System-Framework.pdf</b>, <b>DESIGN.md</b>, gRPC contract <b>proto/booking.proto</b></td></tr>
+        <tr><td>3.1</td><td>Baseline v1: git tag <b>baseline-v1-2026-10-29</b>, screenshot docs/evidence/2026-10-29-baseline-island-console.png. v2 baseline: commit "v2: packages, hold/pay/confirm, node admins, parallel reports, guest app" (12 Nov)</td></tr>
+        <tr><td>3.2, 4.3</td><td>v3 commits of 18 Nov (prices, build-your-own, roles, refunds, records, registered islands, front-desk page, Google log-in, hourly extra time). Live central: <b>biliran-central.onrender.com</b> with the three island nodes. Screenshot right.</td></tr>
+        <tr><td>4.1, 4.2, 5.2</td><td><b>docs/evidence/2026-11-12-hotspot-tests.txt</b> (4 laptops, real hotspot) and the 18 Nov benchmark: search fan-out 2.94× (171 vs 503 ms), reports 3.03× with 4 worker threads, ~149 req/s at 100 clients with 0% errors, 0 oversells in 5 races, 1 booking from 20 duplicate requests, 1 of 4 simultaneous check-ins. Scripts in <b>loadtest/</b></td></tr>
+        <tr><td>5.1</td><td>12 functional test cases (all pass) and concurrency tests: Technical Documentation ch. 9–10</td></tr>
+        <tr><td>6.1, 7.1</td><td><b>Resortify_Technical_Documentation.docx/.pdf</b> (31 pages, includes the performance evaluation report) and <b>Resortify_Presentation.pptx/.pdf</b> (20 slides with speaker notes); README.md, docs/TEAM-SETUP.md, docs/DEPLOY-CLOUD.md</td></tr>
       </tbody>
     </table>
   </div>
   <div>
-    <img class="shot" src="../evidence/2026-10-29-baseline-island-console.png" alt="Baseline island console">
-    <p class="ev" style="margin-top:1.5mm"><b>Baseline (task 3.1):</b> Biliran island node console running the v1 prototype — walk-in availability, three walk-in bookings, one guest checked in (REDEEMED), and four events waiting in the outbox to sync to central. Captured 29 Oct 2026. The v1 prototype predates the adviser's v2 changes (packages, no tickets); it is being reworked to v2 under tasks 3.1–3.2.</p>
+    <img class="shot" src="../evidence/2026-11-18-island-admin-dashboard.png" alt="Island admin dashboard, v3">
+    <p class="ev" style="margin-top:1.5mm"><b>Current version (tasks 3.2 – 4.3):</b> Maripipi island admin dashboard of the final system: arrivals, check-ins, walk-ins and revenue split into online and walk-in, next guests to check in and latest bookings (fictional demo data). Captured 18 Nov 2026.</p>
   </div>
 </div>
 
 <h2>Notes</h2>
 <ul style="margin:0;padding-left:5mm">
-  <li>Percentages are honest estimates as of 29 Oct 2026. Measurements in 4.1/4.2/5.2 are preliminary (prototype on one laptop); final evidence will be measured on the four-laptop hotspot setup with 100 / 500 / 1,000 requests.</li>
-  <li>Design was revised to v2 on 29 Oct after adviser feedback: no inventory split, receptionist marks unavailable services, no tickets, package booking, central admin + node admins + receptionists.</li>
-  <li>Known open items: framework approval (2.3), v2 rework of the island data model, hotspot test with all 8 devices.</li>
+  <li>Status as of 19 Nov 2026. The design changed twice after review: v2 (29 Oct, adviser changes: packages, no inventory split, no tickets) and v3 (18 Nov: prices set by island admins, build-your-own trips, refunds, separate front-desk and admin roles, records and reports, registration of new islands).</li>
+  <li>For the booking test all prices are set to ₱0; island admins can change them in Packages &amp; services.</li>
+  <li>Open items: each island laptop must run git pull and restart on the latest version; Google sign-in needs the Google OAuth client added in Supabase; mock defense, individual contribution records and a recorded backup demo are still to be done.</li>
 </ul>
 
 <script>
@@ -114,72 +113,73 @@ const T = (no, task, owner, start, due, remarks, evidence, pct) => ({ no, task, 
 const tasks = [
   P('PHASE 1: Project Planning and Requirements'),
   T('1.1', 'Select project and define problem statement, objectives, and scope', 'Member A + Member B', '10-26', '10-26',
-    'Problem: online and walk-in sales of island resort/tour packages share the same rooms, seats and boats, so the last unit can be sold twice; island links to the mainland are unreliable. Objective: book packages online and face-to-face from one inventory with no double booking, and keep islands working offline. Scope: prototype, 3 island nodes + 1 central node, simulated payment, fictional businesses.',
-    'Design doc §1–3', 100),
+    'Problem: online and walk-in sales of island resort/tour packages share the same rooms, seats and boats, so the last unit can be sold twice; island links to the mainland are unreliable. Objective: one inventory per island for online and walk-in, no double booking, islands keep working offline. Scope: 3 island nodes + 1 central node, simulated payment, three resorts.',
+    'Design doc §1–3; Technical Documentation ch. 1–2', 100),
   T('1.1.1', 'Assign roles, responsibilities, and individual deliverables', 'Member A', '10-26', '10-26',
-    'Member A: central node, booking saga, central admin panel, Supabase, gRPC contract, integration. Member B: island node (inventory, packages, hold/confirm, accounts, sync). Member C: customer mobile app (Expo). Member D: node console UI, parallel reports, load tests, benchmark charts. Every member explains the overall design and their own module.',
+    'Member A: central node, booking saga, central dashboard, Supabase, gRPC contract, integration. Member B: island node (inventory, packages, hold/confirm, accounts, sync). Member C: guest mobile app (Expo). Member D: island consoles, parallel reports, load tests, charts.',
     'Design doc §18, §5.1', 100),
   T('1.2', 'Identify the parallel and distributed components of the proposed system', 'Member A + Member B', '10-26', '10-28',
-    'Distributed: each island node owns its data (SQLite) and talks to central over gRPC; outbox sync with retries and de-duplication; islands keep working offline (partition). Parallel: central queries all islands concurrently (fan-out); concurrent bookings made safe with atomic guarded updates; reports computed with worker threads.',
+    'Distributed: each island node owns its data (SQLite) and talks to central by RPC; outbox sync with retries and de-duplication; islands keep working offline. Parallel: central asks all islands at once (fan-out); concurrent bookings decided by atomic guarded updates; reports computed with worker threads.',
     'Design doc §4.1, §12, §13', 100),
   P('PHASE 2: System Framework and Technical Design'),
   T('2.1', 'Prepare system architecture, workflow, and framework', 'Member A + Member B', '10-27', '10-29',
-    'Architecture: 4 laptops on a hotspot — central (API, saga, admin panel, Supabase) + 3 island nodes (server, SQLite, console); phones run the app. IPO conceptual framework, 7 flowcharts (online booking, walk-in, arrival, mark unavailable, catalog change, registration/accounts), sequence and state diagrams. Revised to v2 after adviser feedback; awaiting approval.',
-    'Design doc §4, §5, §8–10; Framework-and-Flowcharts.pdf', 90),
+    'Architecture, IPO framework, flowcharts, sequence and state diagrams; revised to v2 after adviser feedback (29 Oct).',
+    'Design doc §4, §5, §8–10; Framework-and-Flowcharts.pdf', 100),
   T('2.2', 'Define modules, interfaces, data flow, and technology stack', 'Member A + Member B', '10-28', '10-30',
-    'Modules M1–M11 (app, central API, orchestrator, admin panel, central sync, island booking engine, catalog/accounts, sync agent, node console, report workers, test tools). Interfaces: HTTP/JSON (app, consoles, admin), gRPC IslandService/CentralService. Stack: Expo (React Native, TypeScript), Node.js + TypeScript, gRPC, SQLite, Supabase PostgreSQL, worker_threads.',
-    'Design doc §5.1–5.3, §11, §15; proto/booking.proto', 90),
+    'Modules M1–M11; HTTP/JSON for the app and consoles, gRPC IslandService/CentralService between nodes. Stack: Expo (React Native, TypeScript), Node.js + TypeScript, gRPC, SQLite, Supabase PostgreSQL, worker_threads.',
+    'Design doc §5.1–5.3, §11, §15; proto/booking.proto', 100),
   T('2.3', 'Submit and defend the initial system framework for instructor approval', 'Whole team', '10-30', '10-30',
-    'Prepared: framework document (architecture diagram, workflow, module list, interfaces, data flow, technology stack) and short review slides. Defense scheduled 30 Oct; approval pending.',
-    'Upload: Task-2.3-Initial-System-Framework.pdf (framework + slides, one file)', 50),
+    'Framework document and review slides submitted and presented; development continued on the v2 design.',
+    'Task-2.3-Initial-System-Framework.pdf', 100),
   P('PHASE 3: Core System Development'),
-  T('3.1', 'Develop the basic functional system (baseline version)', 'Member A + Member B', '10-29', '11-03',
-    'Baseline v1 runs: 3 island nodes + central over gRPC, parallel search, walk-in booking from the island inventory, check-in once only, outbox sync to central, Supabase online booking. Rework to v2 (packages, hold → pay → confirm, no tickets) started.',
-    'Tag baseline-v1-2026-10-29; screenshot attached', 30),
-  T('3.2', 'Implement core features and individual modules', 'Members B, C, D', '11-02', '11-06',
-    'Planned: package catalog and per-guest items, mark-unavailable (blocked units), arrival confirmation by reference/name, node admin pages, receptionist accounts and local login, customer app screens. Starts once the v2 baseline is usable.',
-    '', 0),
+  T('3.1', 'Develop the basic functional system (baseline version)', 'Member A + Member B', '10-29', '11-12',
+    'Baseline v1 (29 Oct): 3 island nodes + central over gRPC, parallel search, walk-ins, check-in once, outbox sync. Reworked to v2 (12 Nov): packages, hold → pay → confirm saga, node admins, no tickets.',
+    'Tag baseline-v1-2026-10-29; v2 commit 12 Nov', 100),
+  T('3.2', 'Implement core features and individual modules', 'Members B, C, D', '11-12', '11-18',
+    'Guest app (Resortify): Google log-in or guest, live availability, package or build-your-own, arrival calendar, extra hours (₱50/h), hold timer, payment, my trips, cancel with refund, day/night. Island: admin console (prices, packages, staff and limits, refunds, records) and a separate front-desk page (arrivals, ID check-in, walk-ins, services on/off, Online/Walk-in filters). Central dashboard: islands, accounts, bookings, inventory and reports, health page.',
+    'Commits 12–18 Nov; screenshots in the Technical Documentation ch. 5', 100),
   P('PHASE 4: Parallel and Distributed Implementation'),
-  T('4.1', 'Implement parallel processing or concurrent task execution', 'Member D + Member A', '11-03', '11-09',
-    'Done in prototype: concurrent fan-out search (measured 2.93× vs sequential). To do: occupancy/sales reports split across 1/2/4/8 worker threads, compared with a sequential run; record test conditions.',
-    'loadtest/search.ts', 15),
-  T('4.2', 'Implement distributed communication, coordination, or remote processing', 'Member A + Member B', '11-04', '11-10',
-    'Done in prototype: gRPC between nodes with deadlines, idempotency keys, outbox with retries and de-duplication by event id, partition switch. To do for v2: HoldBooking/ConfirmBooking/ReleaseHold, PullDirectory, reconnect handling.',
-    'shared/rpc.ts, island/server.ts', 30),
-  T('4.3', 'Integrate parallel and distributed components', 'Whole team', '11-09', '11-11',
-    'Demonstrate one complete booking: app → central → island hold → payment → confirm → arrival at the desk → sync to central → visible in admin reports.',
-    '', 0),
+  T('4.1', 'Implement parallel processing or concurrent task execution', 'Member D + Member A', '11-03', '11-12',
+    'Parallel fan-out search to all islands (Promise.all) and data-parallel reports with a pool of 1/2/4/8 worker threads, both measured against the sequential version.',
+    'central/server.ts, central/reports.ts, loadtest/search.ts, loadtest/reports.ts', 100),
+  T('4.2', 'Implement distributed communication, coordination, or remote processing', 'Member A + Member B', '11-04', '11-12',
+    'gRPC Invoke between nodes on a LAN; outbound secure WebSocket link to the cloud central with heartbeats; HTTPS polling fallback; deadlines, idempotency keys, outbox with de-duplication, partition switch. 18 Nov: registration of new islands from central.',
+    'shared/rpc.ts, central/poll.ts, island/server.ts', 100),
+  T('4.3', 'Integrate parallel and distributed components', 'Whole team', '11-09', '11-18',
+    'Complete flow works end to end: app → central (Render) → owning island hold → payment → confirm → check-in at the desk → copy to Supabase → central dashboard and reports.',
+    'Live: biliran-central.onrender.com', 100),
   P('PHASE 5: Integration and Testing'),
-  T('5.1', 'Conduct functional, integration, and error-handling tests', 'Member C + Member D', '11-10', '11-12',
-    'Prototype end-to-end checks pass (10/10). Test cases to attach: valid booking, sold out, duplicate request, payment failure, hold expiry, double arrival, island offline, reconnect and sync; expected vs actual, pass/fail.',
-    '', 10),
-  T('5.2', 'Collect performance evidence and explain parallel/distributed behavior', 'Member D', '11-11', '11-13',
-    'Preliminary: search 2.93× faster in parallel; 30 concurrent requests for 6 rooms → 0 oversold. Final: 100 / 500 / 1,000 requests on the hotspot, report speedup with 1/2/4/8 threads, compared with Amdahl\'s law. No speedup claimed without measurements.',
-    '', 15),
+  T('5.1', 'Conduct functional, integration, and error-handling tests', 'Member C + Member D', '11-10', '11-18',
+    '12 functional test cases pass (booking, failed payment, walk-in, check-in, refunds, role checks, price change, new island, bad input, admin auth). Error-handling fixes: clear sign-in errors, outdated-island detection, booking input validation.',
+    'Technical Documentation ch. 9', 100),
+  T('5.2', 'Collect performance evidence and explain parallel/distributed behavior', 'Member D', '11-11', '11-18',
+    'Hotspot (12 Nov, 4 laptops): search 1.89×, no oversell with 30/50 clients. Benchmark (18 Nov): search 2.94×, reports 3.03× on 4 cores (Amdahl P ≈ 0.89), ~149 req/s at 100 clients with 0% errors, no oversell in 5 races, idempotency and double check-in correct, partition handled. Bottleneck: single central process.',
+    'docs/evidence/2026-11-12-hotspot-tests.txt; Technical Documentation ch. 10', 100),
   P('PHASE 6: Documentation and Evidence'),
-  T('6.1', 'Technical documentation and individual contribution records', 'Member D', '11-13', '11-16',
-    'Existing: README (setup), DESIGN.md, 34-page design document, commented code. To add: testing results, limitations, individual contribution records.',
-    'README.md, DESIGN.md', 20),
+  T('6.1', 'Technical documentation and individual contribution records', 'Member D', '11-13', '11-19',
+    'Technical Documentation in research-paper format (31 pages): problem, objectives, users, business model, features, architecture, PDC implementation, concurrency, tests, performance evaluation report, security, limitations. Still to add: member names and individual contribution records.',
+    'Resortify_Technical_Documentation.docx / .pdf', 90),
   P('PHASE 7: Final Validation and Defense Preparation'),
-  T('7.1', 'Prepare slides, architecture visuals, and demonstration sequence', 'Member C', '11-13', '11-16',
-    'Final slides: problem, architecture, parallel/distributed workflow, test evidence, limitations, live demo order (register island → publish package → book online → walk-in race → island offline → benchmarks).',
-    '', 0),
-  T('7.2', 'Conduct mock defense and individual questioning', 'Whole team', '11-16', '11-17',
-    'Timed mock defense; each member answers questions on their own module.', '', 0),
-  T('7.3', 'Fix critical bugs and verify the final system version', 'Member B', '11-16', '11-18',
-    'Fix critical defects, rerun regression tests, record remaining known issues.', '', 0),
-  T('7.4', 'Submit final project package and prepare backup demonstration', 'Member A + Member D', '11-18', '11-18',
-    'Report, source code, README/setup guide, dependency list, test evidence, contribution record, slides, recorded backup demo.', '', 0),
+  T('7.1', 'Prepare slides, architecture visuals, and demonstration sequence', 'Member C', '11-13', '11-19',
+    '20 slides with speaker notes: problem, users, solution and business model, system screens, architecture, saga, concurrency, performance charts, reliability, security, limitations, 7-step live demo plan, Q&A notes.',
+    'Resortify_Presentation.pptx / .pdf', 100),
+  T('7.2', 'Conduct mock defense and individual questioning', 'Whole team', '11-19', '11-19',
+    'Timed run-through of the slides and the 7-step demo; each member answers questions on their own module.', '', 0),
+  T('7.3', 'Fix critical bugs and verify the final system version', 'Member B', '11-16', '11-19',
+    'Fixed: sign-in for usernames with dots, "Unexpected token" on a wrong address, booking without an ID type, outdated islands shown as offline. Remaining: every island laptop updated to the latest version and restarted.',
+    'Commits 18 Nov', 80),
+  T('7.4', 'Submit final project package and prepare backup demonstration', 'Member A + Member D', '11-19', '11-20',
+    'Ready: technical documentation, slides, source code on GitHub, setup guides. To do: rename the paper [Year&amp;Section]_Resortify and upload it, record a backup demo video.', '', 60),
   P('PHASE 8: Final Defense'),
-  T('8.1', 'Final project defense and live demonstration', 'Whole team', '11-19', '11-20',
-    'Live demo on four laptops and phones: online and walk-in booking, race for the last room, island offline and recovery, measured speedups, failure handling.', '', 0),
+  T('8.1', 'Final project defense and live demonstration', 'Whole team', '11-20', '11-20',
+    'Live demo with the cloud central, three island laptops and phones: online and walk-in booking, race for the last room, island offline and recovery, measured speedups.', '', 0),
 ];
 
 // Day columns: 26 Oct – 20 Nov 2026.
 const days = [];
 for (let d = new Date(Date.UTC(2026, 9, 26)); d <= new Date(Date.UTC(2026, 10, 20)); d.setUTCDate(d.getUTCDate() + 1)) days.push(new Date(d));
 const iso = (d) => d.toISOString().slice(5, 10);
-const TODAY = '10-29';
+const TODAY = '11-19';
 const label = (d) => `${d.getUTCDate()}`;
 const mon = (d) => d.getUTCMonth() === 9 ? 'Oct' : 'Nov';
 const dayOf = (mmdd) => new Date(Date.UTC(2026, Number(mmdd.slice(0, 2)) - 1, Number(mmdd.slice(3))));

@@ -7,11 +7,12 @@
  * that the ID matches the type and last 4 shown here, then checks them in.
  */
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, cancelBooking, getBooking, type Booking } from '../api';
+import { forgetTrip } from '../reminders';
 import { PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space, themed } from '../theme';
-import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
+import { askConfirm, Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
 
 export function Confirmation({ booking: initial, onDone, justPaid }: { booking: Booking; onDone: () => void; justPaid?: boolean }) {
   const [b, setB] = useState(initial);
@@ -33,24 +34,20 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
 
   // Asks first (showing the refund), then cancels on the island (units go
   // back on sale, the refund is recorded).
-  function cancel() {
+  async function cancel() {
     const refund = b.refund_preview ?? (b.status === 'HELD' ? 0 : b.total_php);
-    Alert.alert('Cancel booking?', `${b.reference} · ${b.package_name}\n\nRefund: ${peso(refund)} of ${peso(b.total_php)}.\nFull refund before the trip date, half on the trip date.`, [
-      { text: 'Keep it', style: 'cancel' },
-      {
-        text: 'Cancel booking', style: 'destructive', onPress: async () => {
-          setBusy('cancel');
-          setError(null);
-          try {
-            setB(await cancelBooking(b.reference, b.email));
-          } catch (err) {
-            setError((err as ApiError).message);
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
+    const ok = await askConfirm('Cancel booking?', `${b.reference} · ${b.package_name}\n\nRefund: ${peso(refund)} of ${peso(b.total_php)}.\nFull refund before the trip date, half on the trip date.`, 'Cancel booking');
+    if (!ok) return;
+    setBusy('cancel');
+    setError(null);
+    try {
+      setB(await cancelBooking(b.reference, b.email));
+      void forgetTrip(b.reference); // no reminder for a cancelled trip
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   const canCancel = b.status === 'CONFIRMED' || b.status === 'HELD';

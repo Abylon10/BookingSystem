@@ -335,6 +335,20 @@ app.get('/api/me/bookings', async (req, res) => {
   res.json({ email, bookings: rows ?? [] });
 });
 
+// Delete my account: POST /api/me/delete with the guest's Supabase token.
+// Removes the sign-in account (Google link, settings). Bookings stay with the
+// islands: they are the resorts' records and can still be looked up with the
+// reference and e-mail.
+app.post('/api/me/delete', async (req, res) => {
+  if (!sb) return res.status(503).json({ error: 'Accounts need Supabase on central' });
+  const jwt = (req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const { data, error } = jwt ? await sb.auth.getUser(jwt) : { data: { user: null }, error: null };
+  if (error || !data.user) return res.status(401).json({ error: 'Sign in again' });
+  const { error: delErr } = await sb.auth.admin.deleteUser(data.user.id);
+  if (delErr) return res.status(500).json({ error: delErr.message });
+  res.json({ deleted: true });
+});
+
 // Online booking, step 1 — HOLD. The owning island reserves every service
 // (every day, for longer stays) in one atomic transaction (same code and rows as a walk-in) and
 // returns a HELD booking that expires if unpaid. Idempotency-Key makes a retry

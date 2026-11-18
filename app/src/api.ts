@@ -203,6 +203,11 @@ const tripBody = (t: Trip) => (t.kind === 'package'
 // Endpoints
 // ===========================================================================
 
+// Deletes the signed-in guest's account (Settings > Delete account).
+export function deleteAccount(token: string) {
+  return request<{ deleted: boolean }>('/api/me/delete', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+}
+
 // Searches all islands in parallel through central. `days` = how many days
 // the services checklist is checked for (build-your-own).
 export function searchPackages(day: string, guests = 1, extraHours = 0, days = 1) {

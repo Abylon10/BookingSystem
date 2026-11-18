@@ -12,19 +12,22 @@
  *                     hours or the island's services checklist)
  *
  *   My trips (tab)  : list + calendar timeline ──tap──▶ Confirmation
- *   Account (tab)   : Google sign-in
+ *   Account (tab)   : Google sign-in ──▶ Settings (profile, privacy,
+ *                     notifications, preferences, payment)
  *
  * The bottom tab bar switches between Explore, My trips and Account; it is
- * hidden while booking. Day / night is switched on Explore or Account and
- * saved on the phone.
+ * hidden while booking. The theme (day, night or follow the phone) comes
+ * from Settings and is also switched with the moon button on Explore.
  */
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Appearance, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Booking, Package, Trip } from './src/api';
-import { hasSavedSession, useAccount } from './src/auth';
+import { googleEnabled, hasSavedSession, useAccount, useGoogleEnabled } from './src/auth';
 import { saveBooking } from './src/storage';
+import { loadSettings, syncWithAccount, updateSettings, useSettings, type ThemeChoice } from './src/settings';
+import { remindTrip } from './src/reminders';
 import { applyTheme, colors, shadow, themed, type ThemeMode } from './src/theme';
 import { Ionicons } from './src/ui';
 import { Welcome } from './src/screens/Welcome';
@@ -36,6 +39,7 @@ import { Payment } from './src/screens/Payment';
 import { Confirmation } from './src/screens/Confirmation';
 import { MyBookings } from './src/screens/MyBookings';
 import { Profile } from './src/screens/Profile';
+import { Settings } from './src/screens/Settings';
 
 // Which screen is showing, with the data it needs.
 type Tab = 'explore' | 'mine' | 'account';
@@ -43,32 +47,51 @@ type Route =
   | { name: 'loading' }
   | { name: 'welcome' }
   | { name: 'signin' }
+  | { name: 'settings' }
   | { name: Tab }
   | { name: 'package'; pkg: Package }
   | { name: 'form'; trip: Trip; back: Route }
   | { name: 'pay'; booking: Booking }
   | { name: 'confirmed'; booking: Booking; justPaid: boolean; from: Tab };
 
-// Remembers on this phone: welcome seen, "continue as guest" chosen, day/night.
+// Remembers on this phone: welcome seen, "continue as guest" chosen.
 const WELCOME_KEY = 'seen-welcome';
 const GUEST_KEY = 'continue-as-guest';
-const THEME_KEY = 'app-theme';
+
+// The palette to use for a theme choice ("system" follows the phone).
+const effectiveTheme = (choice: ThemeChoice, phone: string | null | undefined): ThemeMode =>
+  choice === 'system' ? (phone === 'dark' ? 'dark' : 'light') : choice;
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: 'loading' });
   // Signed-in guest (Google), or null.
   const account = useAccount();
-  // Day or night (saved on the phone).
+  // Whether Google sign-in is switched on in Supabase.
+  const google = useGoogleEnabled();
+  // Settings, and the day/night palette they ask for.
+  const settings = useSettings();
+  const phoneScheme = useColorScheme();
   const [theme, setTheme] = useState<ThemeMode>('light');
+  const wanted = effectiveTheme(settings.theme, phoneScheme);
+  useEffect(() => {
+    if (wanted !== theme) { applyTheme(wanted); setTheme(wanted); }
+  }, [wanted, theme]);
+
+  // Signed in: settings follow the account (newest copy wins).
+  useEffect(() => {
+    if (account) void syncWithAccount(account.metadata);
+  }, [account?.email]);
 
   // First launch → welcome screen → Log in. Later launches: Log in again
   // unless already signed in or "continue as guest" was chosen.
   // Also applies the saved day/night choice before the first screen shows.
   useEffect(() => {
-    Promise.all([AsyncStorage.multiGet([WELCOME_KEY, GUEST_KEY, THEME_KEY]), hasSavedSession()])
-      .then(([[[, seen], [, guest], [, saved]], signedIn]) => {
-        if (saved === 'dark') { applyTheme('dark'); setTheme('dark'); }
-        setRoute(!seen ? { name: 'welcome' } : signedIn || guest ? { name: 'explore' } : { name: 'signin' });
+    // The Log in screen is skipped while Google sign-in is off in Supabase.
+    Promise.all([AsyncStorage.multiGet([WELCOME_KEY, GUEST_KEY]), hasSavedSession(), googleEnabled(), loadSettings()])
+      .then(([[[, seen], [, guest]], signedIn, google, saved]) => {
+        const mode = effectiveTheme(saved.theme, Appearance.getColorScheme());
+        if (mode === 'dark') { applyTheme('dark'); setTheme('dark'); }
+        setRoute(!seen ? { name: 'welcome' } : signedIn || guest || !google ? { name: 'explore' } : { name: 'signin' });
       })
       .catch(() => setRoute({ name: 'welcome' }));
   }, []);
@@ -78,13 +101,8 @@ export default function App() {
     if (account && route.name === 'signin') setRoute({ name: 'explore' });
   }, [account, route.name]);
 
-  // Switches day / night: new palette and styles, re-render, remember it.
-  const toggleTheme = () => {
-    const next: ThemeMode = theme === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    setTheme(next);
-    AsyncStorage.setItem(THEME_KEY, next).catch(() => {});
-  };
+  // The moon button: switches day / night (saved in Settings).
+  const toggleTheme = () => updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' });
 
   // Picks the screen for the current route.
   let screen;
@@ -96,7 +114,7 @@ export default function App() {
       screen = (
         <Welcome onStart={() => {
           AsyncStorage.setItem(WELCOME_KEY, '1').catch(() => {});
-          setRoute(account ? { name: 'explore' } : { name: 'signin' });
+          setRoute(account || !google ? { name: 'explore' } : { name: 'signin' });
         }} />
       );
       break;
@@ -111,7 +129,7 @@ export default function App() {
     case 'explore':
       screen = (
         <Explore onOpen={(pkg) => setRoute({ name: 'package', pkg })} theme={theme} onToggleTheme={toggleTheme}
-          account={account} onLogin={() => setRoute({ name: 'signin' })} />
+          account={account} onLogin={google ? () => setRoute({ name: 'signin' }) : undefined} />
       );
       break;
     case 'package':
@@ -136,7 +154,10 @@ export default function App() {
       screen = (
         <Payment
           booking={route.booking}
-          onPaid={(booking) => setRoute({ name: 'confirmed', booking, justPaid: true, from: 'explore' })}
+          onPaid={(booking) => {
+            void remindTrip(booking); // trip reminder, if switched on in Settings
+            setRoute({ name: 'confirmed', booking, justPaid: true, from: 'explore' });
+          }}
           onCancel={() => setRoute({ name: 'explore' })}
         />
       );
@@ -148,7 +169,10 @@ export default function App() {
       screen = <MyBookings account={account} onSignIn={() => setRoute({ name: 'account' })} onOpen={(booking) => setRoute({ name: 'confirmed', booking, justPaid: false, from: 'mine' })} />;
       break;
     case 'account':
-      screen = <Profile account={account} theme={theme} onToggleTheme={toggleTheme} />;
+      screen = <Profile account={account} onSettings={() => setRoute({ name: 'settings' })} />;
+      break;
+    case 'settings':
+      screen = <Settings account={account} onBack={() => setRoute({ name: 'account' })} />;
       break;
   }
 

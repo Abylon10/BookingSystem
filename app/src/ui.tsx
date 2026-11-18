@@ -8,7 +8,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps,
+  ActivityIndicator, Alert, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BookingStatus } from './api';
@@ -16,6 +16,18 @@ import { colors, radius, shadow, space, themed } from './theme';
 
 // Re-exported so screens import icons from one place.
 export { Ionicons };
+
+// "Are you sure?" before a destructive action. Phones show a native dialog;
+// the web build (where Alert has no buttons) uses the browser's confirm box.
+export function askConfirm(title: string, message: string, okLabel: string): Promise<boolean> {
+  if (Platform.OS === 'web') return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: 'Keep', style: 'cancel', onPress: () => resolve(false) },
+      { text: okLabel, style: 'destructive', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
 
 // ===========================================================================
 // Dates

@@ -70,6 +70,28 @@ export async function signIn(provider: 'google' | 'facebook' = 'google') {
 
 export const signOut = () => supabase.auth.signOut();
 
+// True when Google sign-in is switched on in Supabase (Authentication >
+// Providers > Google). Asked once per app start from Supabase's public
+// settings, so the Log in buttons appear by themselves as soon as Google is
+// enabled — no new app build needed. While it is off, guests book without
+// an account and no broken Google button is shown.
+let googlePromise: Promise<boolean> | null = null;
+export function googleEnabled(): Promise<boolean> {
+  if (!authConfigured) return Promise.resolve(false);
+  googlePromise ??= fetch(`${URL}/auth/v1/settings`, { headers: { apikey: KEY } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => Boolean(s?.external?.google))
+    .catch(() => { googlePromise = null; return false; });
+  return googlePromise;
+}
+
+// Same as a React hook: false until the answer arrives.
+export function useGoogleEnabled() {
+  const [on, setOn] = useState(false);
+  useEffect(() => { googleEnabled().then(setOn); }, []);
+  return on;
+}
+
 // True when a saved sign-in exists on this phone (checked once at start, so
 // the app can skip the sign-in screen for guests who already signed in).
 export async function hasSavedSession(): Promise<boolean> {
@@ -92,6 +114,8 @@ export function useAccount() {
     email: user.email ?? '',
     name: (user.user_metadata?.full_name as string) ?? (user.user_metadata?.name as string) ?? user.email ?? 'Guest',
     avatar: (user.user_metadata?.avatar_url as string) ?? null,
+    provider: (user.app_metadata?.provider as string) ?? 'google',
+    metadata: user.user_metadata as Record<string, unknown> | undefined,
   } : null;
 }
 export type Account = NonNullable<ReturnType<typeof useAccount>>;

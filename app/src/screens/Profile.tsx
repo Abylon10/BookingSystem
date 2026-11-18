@@ -5,19 +5,21 @@
  * Supabase Auth), or keep booking as a guest. Signed in: name, e-mail, and
  * sign out. The account's e-mail fills the booking form and brings the
  * guest's trips to any phone. Facebook sign-in shows once it is enabled in
- * Supabase (EXPO_PUBLIC_FACEBOOK_LOGIN=1). Also the day / night switch.
+ * Supabase (EXPO_PUBLIC_FACEBOOK_LOGIN=1). Also the way into Settings.
  */
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { authConfigured, redirectTo, signIn, signOut, type Account } from '../auth';
+import { redirectTo, signIn, signOut, useGoogleEnabled, type Account } from '../auth';
 import { colors, radius, shadow, space, themed } from '../theme';
 import { Button, ErrorBox, Ionicons } from '../ui';
 
 const FACEBOOK = process.env.EXPO_PUBLIC_FACEBOOK_LOGIN === '1';
 
-export function Profile({ account, theme, onToggleTheme }: { account: Account | null; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
+export function Profile({ account, onSettings }: { account: Account | null; onSettings: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Google sign-in switched on in Supabase?
+  const google = useGoogleEnabled();
 
   // Opens the provider's sign-in page; the account appears when it returns.
   async function go(provider: 'google' | 'facebook') {
@@ -56,25 +58,23 @@ export function Profile({ account, theme, onToggleTheme }: { account: Account | 
           <View style={st.badge}><Ionicons name="person-circle-outline" size={44} color={colors.primary} /></View>
           <Text style={st.name}>Create your account</Text>
           <Text style={st.lead}>Sign in once to keep all your island trips together and book faster. Or keep booking as a guest; it works without an account.</Text>
-          <Button label="Continue with Google" onPress={() => go('google')} busy={busy === 'google'} icon="logo-google" disabled={!authConfigured} />
+          <Button label="Continue with Google" onPress={() => go('google')} busy={busy === 'google'} icon="logo-google" disabled={!google} />
           {FACEBOOK && <Button label="Continue with Facebook" variant="ghost" onPress={() => go('facebook')} busy={busy === 'facebook'} icon="logo-facebook" />}
-          {!authConfigured && <ErrorBox tone="notice" message="Sign-in isn't set up in this build yet (EXPO_PUBLIC_SUPABASE_URL / _PUBLISHABLE_KEY)." />}
+          {/* Google is switched off in Supabase (or this build has no Supabase settings) */}
+          {!google && <ErrorBox tone="notice" message="Google sign-in is coming soon. You can already book as a guest; your trips are kept on this phone." />}
           <ErrorBox message={error} />
         </View>
       )}
 
-      {/* Appearance: day / night */}
-      <View style={st.card}>
-        <Text style={st.sectionTitle}>Appearance</Text>
-        <View style={st.seg}>
-          {(['light', 'dark'] as const).map((m) => (
-            <Pressable key={m} onPress={() => m !== theme && onToggleTheme()} style={[st.segBtn, theme === m && st.segOn]}>
-              <Ionicons name={m === 'light' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme === m ? '#fff' : colors.ink} />
-              <Text style={[st.segText, theme === m && { color: '#fff' }]}>{m === 'light' ? 'Day' : 'Night'}</Text>
-            </Pressable>
-          ))}
+      {/* Settings: profile, privacy, notifications, preferences, payment */}
+      <Pressable onPress={onSettings} style={({ pressed }) => [st.card, st.settingsRow, pressed && { opacity: 0.7 }]}>
+        <View style={st.settingsIcon}><Ionicons name="settings-outline" size={22} color="#fff" /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={st.sectionTitle}>Settings</Text>
+          <Text style={st.settingsSub}>Profile, privacy, reminders, theme, payment</Text>
         </View>
-      </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+      </Pressable>
 
       {/* For the team while setting up Google sign-in */}
       <Text style={st.dev}>Sign-in return address: {redirectTo}</Text>
@@ -106,9 +106,8 @@ const st = themed(() => StyleSheet.create({
   perk: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   perkText: { color: colors.ink },
   sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '800' },
-  seg: { flexDirection: 'row', backgroundColor: colors.skySoft, borderRadius: radius.pill, padding: 4 },
-  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: radius.pill },
-  segOn: { backgroundColor: colors.primary },
-  segText: { color: colors.ink, fontWeight: '700' },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  settingsIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  settingsSub: { color: colors.muted, fontSize: 13, marginTop: 2 },
   dev: { color: colors.muted, fontSize: 11, textAlign: 'center' },
 }));
