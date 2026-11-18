@@ -1,28 +1,31 @@
 /**
  * app/src/screens/Explore.tsx
  *
- * Home screen. Pick a date (calendar sheet) and guest count, filter by island
- * or search, then browse: day trips as big picture cards, overnight stays as
- * a list. Central asks the three islands IN PARALLEL; island chips show a
- * green/red dot for online/offline. An offline island's packages are not
- * shown, because only the island that owns the inventory can sell them.
+ * Home screen. Pick a date (calendar sheet), filter by island or search,
+ * then browse: day trips as big picture cards, island stays as a list, and
+ * "Build your own trip" per island (services checklist). The number of
+ * guests is chosen after tapping a package or an island.
+ *
+ * Central asks the three islands IN PARALLEL; island chips show a green/red
+ * dot for online/offline. An offline island's packages are not shown,
+ * because only the island that owns the inventory can sell them.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { searchPackages, type Package, type SearchResult } from '../api';
+import { searchPackages, type IslandStatus, type Package, type SearchResult } from '../api';
 import { PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
-import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle, Stepper } from '../ui';
+import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle } from '../ui';
 
 // How far ahead guests can book (matches the islands' inventoryDays: 60).
 const TODAY = isoDay(new Date());
 const LAST_DAY = addDays(TODAY, 59);
 
-export function Explore({ day, guests, onChange, onOpen }: {
+export function Explore({ day, onDay, onOpen, onBuild }: {
   day: string;
-  guests: number;
-  onChange: (day: string, guests: number) => void;
+  onDay: (day: string) => void;
   onOpen: (p: Package) => void;
+  onBuild: (island: IslandStatus) => void;
 }) {
   // Search result, error text, loading flag, filters, calendar sheet.
   const [data, setData] = useState<SearchResult | null>(null);
@@ -32,20 +35,21 @@ export function Explore({ day, guests, onChange, onOpen }: {
   const [query, setQuery] = useState('');
   const [calendar, setCalendar] = useState(false);
 
-  // Runs the search for the current date and guest count.
+  // Runs the search for the current date (1 guest; the guest count is
+  // chosen on the package screen).
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await searchPackages(day, guests));
+      setData(await searchPackages(day, 1));
       setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [day, guests]);
+  }, [day]);
 
-  // Search again whenever the date or guest count changes.
+  // Search again whenever the date changes.
   useEffect(() => {
     load();
   }, [load]);
@@ -64,6 +68,7 @@ export function Explore({ day, guests, onChange, onOpen }: {
   const islands = data?.islands ?? [];
   const chipIds = ['all', ...islands.map((i) => i.id)];
   const offline = islands.filter((i) => i.status === 'offline');
+  const buildable = islands.filter((i) => i.status === 'online' && (island === 'all' || i.id === island));
 
   return (
     <ScrollView
@@ -72,7 +77,7 @@ export function Explore({ day, guests, onChange, onOpen }: {
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={load} tintColor={colors.primary} />}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Header: location pill, greeting, search box */}
+      {/* Header: location pill, greeting, search box, date */}
       <View style={st.header}>
         <View style={st.locPill}>
           <Ionicons name="location" size={15} color={colors.primary} />
@@ -85,18 +90,14 @@ export function Explore({ day, guests, onChange, onOpen }: {
           <TextInput value={query} onChangeText={setQuery} placeholder="Search falls, islands, stays…" placeholderTextColor="#8DA3AE" style={st.searchInput} />
           {query ? <Pressable onPress={() => setQuery('')} hitSlop={8}><Ionicons name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
         </View>
-
-        {/* Trip settings: date (opens the calendar) and guests */}
-        <View style={st.tripRow}>
-          <Pressable onPress={() => setCalendar(true)} style={st.dateBtn}>
-            <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-            <View>
-              <Text style={st.tripLabel}>Date</Text>
-              <Text style={st.tripValue}>{day === TODAY ? 'Today' : prettyDay(day)}</Text>
-            </View>
-          </Pressable>
-          <Stepper value={guests} min={1} max={8} onChange={(g) => onChange(day, g)} />
-        </View>
+        <Pressable onPress={() => setCalendar(true)} style={st.dateBtn}>
+          <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={st.tripLabel}>Arrival date</Text>
+            <Text style={st.tripValue}>{day === TODAY ? 'Today' : prettyDay(day)}</Text>
+          </View>
+          <Ionicons name="chevron-down" size={18} color={colors.muted} />
+        </Pressable>
       </View>
 
       <View style={st.body}>
@@ -144,6 +145,27 @@ export function Explore({ day, guests, onChange, onOpen }: {
           </>
         )}
 
+        {/* Build your own trip from an island's services checklist */}
+        {buildable.length > 0 && (
+          <>
+            <SectionTitle title="Build your own trip" note="Pick services" />
+            <View style={{ gap: space.sm }}>
+              {buildable.map((i) => (
+                <Pressable key={i.id} onPress={() => onBuild(i)} style={({ pressed }) => [st.build, pressed && { opacity: 0.9 }]}>
+                  <View style={st.buildIcon}><Ionicons name="options-outline" size={22} color={colors.ink} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.rowName}>{i.name}</Text>
+                    <Text style={st.rowMeta}>
+                      {(data?.services ?? []).filter((s) => s.island_id === i.id).map((s) => s.name).join(' · ') || 'Choose rooms, tours and boats'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+
         {!loading && !error && shown.length === 0 && (
           <View style={st.empty}>
             <Ionicons name="boat-outline" size={36} color={colors.muted} />
@@ -153,31 +175,24 @@ export function Explore({ day, guests, onChange, onOpen }: {
       </View>
 
       {/* Calendar sheet */}
-      <DateSheet open={calendar} onClose={() => setCalendar(false)} value={day} min={TODAY} max={LAST_DAY} onChange={(d) => onChange(d, guests)} />
+      <DateSheet open={calendar} onClose={() => setCalendar(false)} value={day} min={TODAY} max={LAST_DAY} onChange={onDay} />
     </ScrollView>
   );
 }
 
-// Why a package can't be booked for the current search (or null if it can).
-export function unavailableReason(p: Package) {
-  if (p.guests > p.max_guests) return `Max ${p.max_guests} guests`;
-  if (!p.available) return 'Fully booked';
-  return null;
-}
-
 // Big picture card (reference: featured hotels): picture, island tag,
-// name and price on a dark strip at the bottom.
+// name and price on a dark strip; a red note when it can't be booked.
 function BigCard({ p, onPress }: { p: Package; onPress: () => void }) {
-  const reason = unavailableReason(p);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [st.big, pressed && { opacity: 0.9 }]}>
       <PackageImage packageId={p.id} style={StyleSheet.absoluteFill} />
+      {!p.available && <View style={st.shade} />}
       <View style={st.tag}><Text style={st.tagText}>{p.island_name.replace(' Island', '')}</Text></View>
       <View style={st.bigFoot}>
         <Text style={st.bigName} numberOfLines={1}>{p.name}</Text>
         <View style={st.bigRow}>
           <Text style={st.bigPrice}>{peso(p.price_php)}<Text style={st.bigUnit}>{p.pricing === 'per_guest' ? ' /guest' : ' /package'}</Text></Text>
-          <Text style={[st.bigLeft, reason && { color: '#FFC9BD' }]}>{reason ?? `${p.spots} left`}</Text>
+          {!p.available && <Text style={st.bigOff} numberOfLines={1}>{p.reason}</Text>}
         </View>
       </View>
     </Pressable>
@@ -186,9 +201,8 @@ function BigCard({ p, onPress }: { p: Package; onPress: () => void }) {
 
 // List row (reference: "Hotels nearby"): thumbnail, name, place, price.
 function RowCard({ p, onPress }: { p: Package; onPress: () => void }) {
-  const reason = unavailableReason(p);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [st.row, pressed && { opacity: 0.9 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [st.row, pressed && { opacity: 0.9 }, !p.available && { opacity: 0.75 }]}>
       <PackageImage packageId={p.id} style={st.thumb} />
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={st.rowName} numberOfLines={1}>{p.name}</Text>
@@ -197,11 +211,9 @@ function RowCard({ p, onPress }: { p: Package; onPress: () => void }) {
           <Text style={st.rowMeta} numberOfLines={1}>{p.location}</Text>
         </View>
         <Text style={st.rowMeta}>{p.nights} night{p.nights > 1 ? 's' : ''} · up to {p.max_guests} guests</Text>
+        {!p.available && <Text style={st.rowOff} numberOfLines={1}>{p.reason}</Text>}
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        <Text style={st.rowPrice}>{peso(p.total_php)}</Text>
-        <Text style={[st.rowLeft, reason && { color: colors.danger }]}>{reason ?? `${p.spots} left`}</Text>
-      </View>
+      <Text style={st.rowPrice}>{peso(p.price_php)}</Text>
     </Pressable>
   );
 }
@@ -218,8 +230,7 @@ const st = StyleSheet.create({
   helloBold: { color: colors.ink, fontSize: 26, fontWeight: '800', marginTop: -4 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 52, marginTop: space.md, ...shadow, shadowOpacity: 0.07 },
   searchInput: { flex: 1, fontSize: 15, color: colors.ink },
-  tripRow: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
-  dateBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 54 },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 54, marginTop: space.sm },
   tripLabel: { color: colors.muted, fontSize: 11 },
   tripValue: { color: colors.ink, fontWeight: '700', fontSize: 15 },
 
@@ -227,14 +238,15 @@ const st = StyleSheet.create({
 
   // Big picture card
   big: { width: 250, height: 210, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.sky, justifyContent: 'flex-end' },
+  shade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(240,240,240,0.55)' },
   tag: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
   tagText: { color: colors.ink, fontSize: 12, fontWeight: '700' },
   bigFoot: { backgroundColor: 'rgba(1, 60, 88, 0.78)', padding: 12, gap: 4 },
   bigName: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  bigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  bigRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
   bigPrice: { color: colors.sun, fontSize: 16, fontWeight: '800' },
   bigUnit: { color: '#CFE8F1', fontSize: 12, fontWeight: '500' },
-  bigLeft: { color: '#CFE8F1', fontSize: 12 },
+  bigOff: { color: '#FFC9BD', fontSize: 12, fontWeight: '700', flexShrink: 1 },
 
   // List row
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 10, ...shadow, shadowOpacity: 0.06 },
@@ -242,8 +254,12 @@ const st = StyleSheet.create({
   rowName: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   rowPlace: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   rowMeta: { color: colors.muted, fontSize: 12 },
+  rowOff: { color: colors.danger, fontSize: 12, fontWeight: '700' },
   rowPrice: { color: colors.primary, fontSize: 16, fontWeight: '800' },
-  rowLeft: { color: colors.muted, fontSize: 12 },
+
+  // Build-your-own island rows
+  build: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 14, borderWidth: 1.5, borderColor: colors.sky, borderStyle: 'dashed' },
+  buildIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.sun, alignItems: 'center', justifyContent: 'center' },
 
   empty: { alignItems: 'center', gap: 8, marginTop: space.lg },
   emptyText: { color: colors.muted, textAlign: 'center' },

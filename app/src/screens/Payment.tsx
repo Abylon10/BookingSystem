@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, payBooking, type Booking } from '../api';
 import { colors, peso, radius, shadow, space } from '../theme';
-import { Button, Card, ErrorBox, InfoRow, Ionicons, TopBar, tripDates } from '../ui';
+import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, TopBar, tripDates } from '../ui';
 
 // Payment methods shown to the guest (all simulated).
 const METHODS: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -61,7 +61,7 @@ export function Payment({ booking, onPaid, onCancel }: { booking: Booking; onPai
         {/* What is being paid for */}
         <Card>
           <InfoRow label="Package" value={booking.package_name} />
-          <InfoRow label="Date" value={tripDates(booking.day, booking.nights)} />
+          <InfoRow label="Dates" value={tripDates(booking.day, booking.end_day ? daysBetween(booking.day, booking.end_day) : booking.nights)} />
           <InfoRow label="Guests" value={String(booking.guests)} />
           <InfoRow label="Guest" value={booking.guest_name} />
           <View style={st.divider} />

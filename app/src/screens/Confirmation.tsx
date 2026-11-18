@@ -11,7 +11,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError, cancelBooking, getBooking, type Booking } from '../api';
 import { PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
-import { Button, Card, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
+import { Button, Card, daysBetween, ErrorBox, InfoRow, Ionicons, StatusBadge, TopBar, tripDates } from '../ui';
 
 export function Confirmation({ booking: initial, onDone, justPaid }: { booking: Booking; onDone: () => void; justPaid?: boolean }) {
   const [b, setB] = useState(initial);
@@ -31,9 +31,11 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
     }
   }
 
-  // Asks first, then cancels on the island (units go back on sale).
+  // Asks first (showing the refund), then cancels on the island (units go
+  // back on sale, the refund is recorded).
   function cancel() {
-    Alert.alert('Cancel booking?', `${b.reference} · ${b.package_name}`, [
+    const refund = b.refund_preview ?? (b.status === 'HELD' ? 0 : b.total_php);
+    Alert.alert('Cancel booking?', `${b.reference} · ${b.package_name}\n\nRefund: ${peso(refund)} of ${peso(b.total_php)}.\nFull refund before the trip date, half on the trip date.`, [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Cancel booking', style: 'destructive', onPress: async () => {
@@ -77,16 +79,22 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
         </View>
 
         {b.stale && <ErrorBox tone="notice" message="The island is offline; this is the last copy central received." />}
+        {b.status === 'CANCELLED' && (
+          <ErrorBox tone="notice" message={b.refund_php ? `Cancelled. ${peso(b.refund_php)} will be refunded to your ${b.payment?.method ?? 'payment method'}.` : 'Cancelled. Nothing was charged for this booking.'} />
+        )}
 
         {/* Trip details */}
         <Card>
           <InfoRow label="Package" value={b.package_name} />
           <InfoRow label="Where" value={b.location} />
-          <InfoRow label="Date" value={tripDates(b.day, b.nights)} />
+          <InfoRow label="Dates" value={tripDates(b.day, b.end_day ? daysBetween(b.day, b.end_day) : b.nights)} />
+          <InfoRow label="Length" value={`${b.days ?? 1} day${(b.days ?? 1) > 1 ? 's' : ''}${b.extra_days ? ` (${b.extra_days} extra)` : ''}`} />
+          {b.services?.length ? <InfoRow label="Services" value={b.services.map((s) => `${s.name} × ${s.qty}`).join('\n')} /> : null}
           <InfoRow label="Guests" value={String(b.guests)} />
           <InfoRow label="E-mail" value={b.email} />
           {b.payment && <InfoRow label="Payment ref" value={`${b.payment.ref} (${b.payment.method})`} />}
           <InfoRow label="Paid" value={peso(b.total_php)} strong />
+          {b.refund_php ? <InfoRow label="Refunded" value={peso(b.refund_php)} /> : null}
         </Card>
 
         <ErrorBox message={error} />

@@ -8,8 +8,8 @@
  * Correct behaviour: confirmed bookings never exceed what was free, and the
  * island's inventory never goes over capacity (no oversell). Exit code 1 if it does.
  *
- *   npm run test:race -- --island maripipi --package maripipi-sambawan-overnight --clients 30
- *   (add --central https://… for a cloud central; --user/--pass for the island console)
+ *   npm run test:race -- --island maripipi --package maripipi-sambawan-overnight --clients 30 --user NAME --pass PASSWORD
+ *   --user/--pass: an island account (npm run island:admin creates one); --central https://… for a cloud central
  */
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -40,15 +40,11 @@ const clients = Number(values.clients);
 const guests = Number(values.guests);
 const json = { 'Content-Type': 'application/json' };
 
-// 1. Sign in to the island console (or create a test admin on a fresh island).
-const session = await (await fetch(`${islandUrl}/api/session`)).json();
-let login;
-if (session.needsSetup) {
-  login = await (await fetch(`${islandUrl}/api/setup`, { method: 'POST', headers: json, body: JSON.stringify({ username: 'loadtest', password: randomUUID() }) })).json();
-} else {
-  if (!values.user || !values.pass) throw new Error('This island has staff accounts: pass --user and --pass');
-  login = await (await fetch(`${islandUrl}/api/login`, { method: 'POST', headers: json, body: JSON.stringify({ username: values.user, password: values.pass }) })).json();
-}
+// 1. Sign in to the island console with a staff account (create one with
+//    `npm run island:admin -- <island> --user NAME --pass PASSWORD`, or from
+//    central's Accounts page).
+if (!values.user || !values.pass) throw new Error('Pass --user and --pass of an island account (npm run island:admin creates one)');
+const login = await (await fetch(`${islandUrl}/api/login`, { method: 'POST', headers: json, body: JSON.stringify({ username: values.user, password: values.pass }) })).json();
 if (!login.token) throw new Error(`Could not sign in to the island console: ${login.error ?? 'unknown error'}`);
 const desk = { ...json, Authorization: `Bearer ${login.token}` };
 

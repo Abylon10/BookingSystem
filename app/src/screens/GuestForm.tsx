@@ -1,24 +1,30 @@
 /**
  * app/src/screens/GuestForm.tsx
  *
- * Step 2 of booking: who is coming. Shows a summary of the trip, asks for the
- * guest's details, then "Reserve" sends a HOLD to central, which forwards it
- * to the island: the units are set aside for 10 minutes while the guest pays.
+ * Step 2 of booking: who is coming. Shows a summary of the trip (a package
+ * or a build-your-own trip), asks for the guest's details (pre-filled from
+ * the signed-in account), then "Reserve" sends a HOLD to central, which
+ * forwards it to the island: the units are set aside for 10 minutes while
+ * the guest pays.
  * Sold out (409) and island offline (503) are shown as plain messages.
  */
 import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ApiError, holdBooking, newRequestId, type Booking, type GuestDetails, type Package } from '../api';
+import { ApiError, holdBooking, newRequestId, type Booking, type GuestDetails, type Trip } from '../api';
+import type { Account } from '../auth';
 import { PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
-import { Button, ErrorBox, Field, Pills, TopBar, tripDates } from '../ui';
+import { Button, daysBetween, ErrorBox, Field, Pills, TopBar, tripDates } from '../ui';
 
 // ID types the front desk accepts (matches the island console).
 const ID_TYPES = ['PhilSys ID', 'Passport', "Driver's License", 'UMID', 'Student ID'];
 
-export function GuestForm({ pkg, onBack, onHeld }: { pkg: Package; onBack: () => void; onHeld: (b: Booking) => void }) {
-  // Form values and per-field validation errors.
-  const [form, setForm] = useState<GuestDetails>({ guestName: '', email: '', phone: '', idType: ID_TYPES[0], idLast4: '' });
+export function GuestForm({ trip, account, onBack, onHeld }: { trip: Trip; account: Account | null; onBack: () => void; onHeld: (b: Booking) => void }) {
+  // Form values (name and e-mail from the account when signed in) and errors.
+  const [form, setForm] = useState<GuestDetails>({
+    guestName: account?.name && account.name !== account.email ? account.name : '', email: account?.email ?? '',
+    phone: '', idType: ID_TYPES[0], idLast4: '',
+  });
   const [errors, setErrors] = useState<Partial<Record<keyof GuestDetails, string>>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +55,7 @@ export function GuestForm({ pkg, onBack, onHeld }: { pkg: Package; onBack: () =>
     setBusy(true);
     setError(null);
     try {
-      const booking = await holdBooking(requestId.current, pkg.id, pkg.day, pkg.guests, {
+      const booking = await holdBooking(requestId.current, trip, {
         ...form, guestName: form.guestName.trim(), email: form.email.trim(), idLast4: form.idLast4.trim(),
       });
       onHeld(booking);
@@ -57,7 +63,7 @@ export function GuestForm({ pkg, onBack, onHeld }: { pkg: Package; onBack: () =>
       const e = err as ApiError;
       // Friendly text for the expected failures; central's text otherwise.
       if (e.status === 409) setError(`Sorry, it just sold out: ${e.message}`);
-      else if (e.status === 503) setError(`${pkg.island_name} is offline right now, so it can't take online bookings. Please try again later.`);
+      else if (e.status === 503) setError(`${trip.islandName} is offline right now, so it can't take online bookings. Please try again later.`);
       else setError(e.message);
       // A definite "no" (4xx) means a new attempt should get a new id.
       if (e.status >= 400 && e.status < 500) requestId.current = newRequestId();
@@ -72,12 +78,14 @@ export function GuestForm({ pkg, onBack, onHeld }: { pkg: Package; onBack: () =>
       <ScrollView contentContainerStyle={st.body} keyboardShouldPersistTaps="handled">
         {/* Trip summary card */}
         <View style={st.summary}>
-          <PackageImage packageId={pkg.id} style={st.thumb} />
+          <PackageImage packageId={trip.imageId} style={st.thumb} />
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={st.name}>{pkg.name}</Text>
-            <Text style={st.meta}>{pkg.island_name}</Text>
-            <Text style={st.meta}>{tripDates(pkg.day, pkg.nights)} · {pkg.guests} guest{pkg.guests > 1 ? 's' : ''}</Text>
-            <Text style={st.total}>{peso(pkg.total_php)}</Text>
+            <Text style={st.name}>{trip.title}</Text>
+            <Text style={st.meta}>{trip.islandName}</Text>
+            <Text style={st.meta}>{tripDates(trip.day, daysBetween(trip.day, trip.endDay))} · {trip.days} day{trip.days > 1 ? 's' : ''} · {trip.guests} guest{trip.guests > 1 ? 's' : ''}</Text>
+            {trip.kind === 'custom' && <Text style={st.meta} numberOfLines={2}>{(trip.items ?? []).map((i) => `${i.name} × ${i.qty}`).join(', ')}</Text>}
+            {trip.extraDays ? <Text style={st.meta}>Includes {trip.extraDays} extra day{trip.extraDays > 1 ? 's' : ''}</Text> : null}
+            <Text style={st.total}>{peso(trip.total)}</Text>
           </View>
         </View>
 
@@ -90,7 +98,7 @@ export function GuestForm({ pkg, onBack, onHeld }: { pkg: Package; onBack: () =>
         <Field label="Last 4 digits of the ID number" icon="card-outline" value={form.idLast4} onChangeText={set('idLast4')} error={errors.idLast4} maxLength={4} keyboardType="number-pad" />
 
         <ErrorBox message={error} />
-        <Button label={`Reserve · ${peso(pkg.total_php)}`} onPress={reserve} busy={busy} variant="accent" icon="lock-closed-outline" />
+        <Button label={`Reserve · ${peso(trip.total)}`} onPress={reserve} busy={busy} variant="accent" icon="lock-closed-outline" />
         <Text style={st.hint}>We hold your spot for 10 minutes while you pay.</Text>
       </ScrollView>
     </KeyboardAvoidingView>

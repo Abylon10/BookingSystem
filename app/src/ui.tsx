@@ -286,6 +286,115 @@ export function DateSheet({ open, onClose, ...cal }: Parameters<typeof Calendar>
 }
 
 // ===========================================================================
+// Range calendar: the reservation timeline. Tap the first day, then the last
+// day the services are used. Days are coloured by availability (open, few
+// left, full, service off) when `statuses` is given. `minDays` is the
+// shortest booking (a 2D1N package needs 2 days); days beyond it are extra
+// days (each adds the extra-day fee).
+// ===========================================================================
+
+export type DayStatus = 'open' | 'low' | 'full' | 'off';
+const STATUS_COLOR: Record<DayStatus, string> = { open: '#1E8A6E', low: '#F5A201', full: '#C8553D', off: '#9AA6AD' };
+
+// Number of calendar days from `a` to `b` (b - a).
+export const daysBetween = (a: string, b: string) => Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 864e5);
+
+export function RangeCalendar({ start, end, onChange, min, max, minDays = 1, statuses }: {
+  start: string; end: string; onChange: (start: string, end: string) => void;
+  min: string; max: string; minDays?: number; statuses?: Record<string, { status: DayStatus; note: string | null }>;
+}) {
+  const [month, setMonth] = useState(() => { const d = parseDay(start); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  // Picking state: after a first tap we wait for the end day.
+  const [picking, setPicking] = useState(false);
+
+  const lead = (month.getDay() + 6) % 7;
+  const daysIn = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const cells: (string | null)[] = [
+    ...Array.from({ length: lead }, () => null),
+    ...Array.from({ length: daysIn }, (_, i) => isoDay(new Date(month.getFullYear(), month.getMonth(), i + 1))),
+  ];
+  const shift = (n: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
+  const canPrev = isoDay(month) > min.slice(0, 8) + '01';
+  const canNext = isoDay(new Date(month.getFullYear(), month.getMonth() + 1, 1)) <= max;
+
+  // First tap: new start (end = shortest length). Second tap on or after the
+  // shortest end: new end. A tap before the start begins again.
+  function tap(d: string) {
+    const shortestEnd = addDays(d, minDays - 1);
+    if (!picking || d < start) {
+      onChange(d, shortestEnd);
+      setPicking(true);
+    } else {
+      onChange(start, d < addDays(start, minDays - 1) ? addDays(start, minDays - 1) : d);
+      setPicking(false);
+    }
+  }
+
+  return (
+    <View>
+      <View style={s.calHead}>
+        <Pressable onPress={() => shift(-1)} disabled={!canPrev} hitSlop={10}>
+          <Ionicons name="chevron-back" size={22} color={canPrev ? colors.ink : colors.line} />
+        </Pressable>
+        <Text style={s.calMonth}>{month.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}</Text>
+        <Pressable onPress={() => shift(1)} disabled={!canNext} hitSlop={10}>
+          <Ionicons name="chevron-forward" size={22} color={canNext ? colors.ink : colors.line} />
+        </Pressable>
+      </View>
+      <View style={s.calRow}>{WEEK.map((w) => <Text key={w} style={s.calWeek}>{w}</Text>)}</View>
+      <View style={s.calGrid}>
+        {cells.map((d, i) => {
+          if (!d) return <View key={`b${i}`} style={s.calCell} />;
+          const st = statuses?.[d]?.status;
+          const off = d < min || d > max || (!picking && (st === 'full' || st === 'off'));
+          const edge = d === start || d === end;
+          const inside = d > start && d < end;
+          return (
+            <Pressable key={d} disabled={off} onPress={() => tap(d)} style={[s.calCell, inside && s.calRange]}>
+              <View style={[s.calDay, edge && s.calDayOn, st === 'off' && !edge && s.calDayOff]}>
+                <Text style={[s.calText, off && { color: colors.line }, edge && { color: '#fff', fontWeight: '700' }]}>{parseDay(d).getDate()}</Text>
+              </View>
+              {st && !edge ? <View style={[s.calDot, { backgroundColor: STATUS_COLOR[st] }]} /> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+      {/* Legend + how to pick */}
+      {statuses && (
+        <View style={s.legend}>
+          {(['open', 'low', 'full', 'off'] as DayStatus[]).map((k) => (
+            <View key={k} style={s.legendItem}><View style={[s.calDot, { position: 'relative', bottom: 0, backgroundColor: STATUS_COLOR[k] }]} />
+              <Text style={s.legendText}>{{ open: 'Available', low: 'Few left', full: 'Full', off: 'Service off' }[k]}</Text></View>
+          ))}
+        </View>
+      )}
+      <Text style={s.calHint}>{picking ? 'Now tap the last day of your stay (or the same day).' : 'Tap your first day, then your last day.'}</Text>
+    </View>
+  );
+}
+
+// Bottom sheet with the range calendar and a summary of the chosen dates.
+export function RangeSheet({ open, onClose, title = 'Reservation dates', summary, ...cal }: Parameters<typeof RangeCalendar>[0] & {
+  open: boolean; onClose: () => void; title?: string; summary?: string;
+}) {
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.sheetBackdrop} onPress={onClose} />
+      <View style={s.sheet}>
+        <View style={s.sheetHandle} />
+        <View style={s.sheetHead}>
+          <Text style={s.section}>{title}</Text>
+          <Pressable onPress={onClose} hitSlop={10}><Ionicons name="close" size={22} color={colors.muted} /></Pressable>
+        </View>
+        <RangeCalendar {...cal} />
+        {summary ? <Text style={s.sheetSummary}>{summary}</Text> : null}
+        <View style={{ marginTop: space.md }}><Button label="Done" onPress={onClose} /></View>
+      </View>
+    </Modal>
+  );
+}
+
+// ===========================================================================
 // Styles
 // ===========================================================================
 const s = StyleSheet.create({
@@ -342,6 +451,14 @@ const s = StyleSheet.create({
   calDay: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   calDayOn: { backgroundColor: colors.primary },
   calText: { color: colors.ink, fontSize: 15 },
+
+  calDayOff: { backgroundColor: '#EEF1F3' },
+  calDot: { position: 'absolute', bottom: 3, width: 6, height: 6, borderRadius: 3 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: space.sm, justifyContent: 'center' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendText: { color: colors.muted, fontSize: 12 },
+  calHint: { color: colors.muted, textAlign: 'center', fontSize: 12, marginTop: space.sm },
+  sheetSummary: { color: colors.ink, fontWeight: '700', textAlign: 'center', marginTop: space.sm },
 
   // Bottom sheet
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(1, 60, 88, 0.35)' },

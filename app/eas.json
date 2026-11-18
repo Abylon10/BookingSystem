@@ -1,0 +1,25 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_CENTRAL_URL": "https://biliran-central.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://xrpkpxxxancrogjddriw.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_mZHmX3umEbZH8BHtxNYFvw_lAT66gPD"
+      }
+    },
+    "production": {
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "EXPO_PUBLIC_CENTRAL_URL": "https://biliran-central.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://xrpkpxxxancrogjddriw.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_mZHmX3umEbZH8BHtxNYFvw_lAT66gPD"
+      }
+    }
+  }
+}
