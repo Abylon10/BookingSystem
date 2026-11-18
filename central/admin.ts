@@ -4,9 +4,11 @@
  * Server side of the central dashboard (central/dashboard/):
  *  - POST /api/admin/login   : password -> signed session token (12 h)
  *  - GET  /api/admin/summary   : the Dashboard page (summary of everything)
+ *  - GET/POST /api/admin/islands : Islands page (list, register a new island)
  *  - GET  /api/admin/bookings  : Bookings page (all islands, filterable)
  *  - GET/POST /api/admin/accounts : Accounts page (island admin accounts)
- *  - GET  /api/admin/inventory : Inventory page (per-island stats, synced copy)
+ *  - GET  /api/admin/records   : Inventory page (revenue, walk-in vs online, usage)
+ *  - GET  /api/admin/inventory : capacity used per island (Dashboard summary)
  *  - GET  /api/admin/report-bench : Reports page (parallel worker benchmark)
  *
  * Central is public on the internet and the dashboard shows guest names, so
@@ -29,7 +31,9 @@ interface Deps {
   // Calls one island's method (over its link or LAN gRPC).
   ask: <T = unknown>(islandId: string, method: string, request: object, timeoutMs?: number) => Promise<T>;
   // Every island with its name and whether it is linked right now.
-  islandList: () => { id: string; name: string; linked: boolean }[];
+  islandList: () => { id: string; name: string; prefix: string; builtIn: boolean; linked: boolean }[];
+  // Registers a new island (saved in Supabase, live at once).
+  registerIsland: (i: { id: string; name: string; prefix: string }) => Promise<void>;
 }
 
 const TOKEN_HOURS = 12;
@@ -89,7 +93,7 @@ const SOLD = new Set(['HELD', 'CONFIRMED', 'CHECKED_IN']);
 // Routes
 // ---------------------------------------------------------------------------
 
-export function mountAdmin(app: express.Express, { sb, secret, search, ask, islandList }: Deps): void {
+export function mountAdmin(app: express.Express, { sb, secret, search, ask, islandList, registerIsland }: Deps): void {
   const password = process.env.ADMIN_PASSWORD ?? '';
 
   // Login: returns a token the dashboard sends as "Authorization: Bearer ...".
@@ -206,6 +210,29 @@ export function mountAdmin(app: express.Express, { sb, secret, search, ask, isla
   });
 
   // -------------------------------------------------------------------------
+  // Islands page: list every island and register a new one. A new island
+  // gets an id (its node runs as `npm run island -- <id>`), a name, and a
+  // 3-letter prefix for its booking references.
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/islands', requireAdmin, (_req, res) => res.json({ islands: islandList() }));
+  app.post('/api/admin/islands', requireAdmin, async (req, res) => {
+    const id = String(req.body?.id ?? '').trim().toLowerCase();
+    const name = String(req.body?.name ?? '').trim();
+    const prefix = String(req.body?.prefix ?? '').trim().toUpperCase();
+    // Letters/digits only in the id: package ids are "<island id>-<name>".
+    if (!/^[a-z][a-z0-9]{1,30}$/.test(id)) return res.status(400).json({ error: 'Island id: 2-31 lowercase letters or digits, starting with a letter (e.g. palompon)' });
+    if (name.length < 2) return res.status(400).json({ error: 'Island name is required' });
+    if (!/^[A-Z]{3}$/.test(prefix)) return res.status(400).json({ error: 'Prefix: exactly 3 letters (e.g. PAL)' });
+    try {
+      await registerIsland({ id, name, prefix });
+      res.json({ id, name, prefix });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      res.status(code === 'ALREADY_EXISTS' ? 409 : code === 'UNAVAILABLE' ? 503 : 500).json({ error: (err as Error).message });
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // Bookings page: every island's bookings (central's copies), filterable
   // -------------------------------------------------------------------------
   app.get('/api/admin/bookings', requireAdmin, async (req, res) => {
@@ -257,8 +284,66 @@ export function mountAdmin(app: express.Express, { sb, secret, search, ask, isla
   });
 
   // -------------------------------------------------------------------------
-  // Inventory page: each island's inventory for a date range, read live from
-  // the islands in parallel and copied to Supabase (inventory_copies), plus
+  // Inventory page (records): per island revenue, refunds and net, walk-in
+  // vs online, and how much each package and service is used, for trips
+  // from `from` to `to`. Asked of all islands in parallel (each island owns
+  // its records). An offline island is summarised from central's booking
+  // copies instead (money and walk-in/online only; no per-service usage).
+  // -------------------------------------------------------------------------
+  app.get('/api/admin/records', requireAdmin, async (req, res) => {
+    const to = (req.query.to as string) || today();
+    const from = (req.query.from as string) || addDays(to, -29);
+    const PAID = new Set(['CONFIRMED', 'CHECKED_IN']);
+
+    const islands = await Promise.all(islandList().map(async (i) => {
+      try {
+        return { ...(await ask<Record<string, unknown>>(i.id, 'GetRecords', { from, to }, 8000)), id: i.id, name: i.name, live: true };
+      } catch {
+        // Offline: summarise central's copies of this island's bookings.
+        let copies: Copy[] = [];
+        if (sb) {
+          const { data } = await sb.from('booking_copies').select('*').eq('island_id', i.id).gte('day', from).lte('day', to).limit(5000);
+          copies = (data ?? []) as Copy[];
+        }
+        const paid = copies.filter((c) => PAID.has(c.status));
+        const side = (s: string) => {
+          const x = paid.filter((c) => c.source === s);
+          return { bookings: x.length, guests: x.reduce((n, c) => n + c.guests, 0), revenue: x.reduce((n, c) => n + c.total_php, 0) };
+        };
+        const cancelled = copies.filter((c) => c.status === 'CANCELLED');
+        const kept = cancelled.reduce((n, c) => n + ((c.refund_php ?? 0) > 0 ? c.total_php - (c.refund_php ?? 0) : 0), 0);
+        const walkin = side('WALKIN');
+        const online = side('ONLINE');
+        const byPkg = new Map<string, { id: string; name: string; bookings: number; guests: number; revenue: number; walkin: number; online: number }>();
+        for (const c of paid) {
+          const id = c.package_id === 'custom' ? 'custom' : c.package_id;
+          const p = byPkg.get(id) ?? { id, name: id === 'custom' ? 'Build your own' : c.package_name, bookings: 0, guests: 0, revenue: 0, walkin: 0, online: 0 };
+          p.bookings++; p.guests += c.guests; p.revenue += c.total_php; p[c.source === 'WALKIN' ? 'walkin' : 'online']++;
+          byPkg.set(id, p);
+        }
+        const daily = new Map<string, { day: string; walkin: number; online: number }>();
+        for (const c of paid) {
+          const d = daily.get(c.day) ?? { day: c.day, walkin: 0, online: 0 };
+          d[c.source === 'WALKIN' ? 'walkin' : 'online'] += c.total_php;
+          daily.set(c.day, d);
+        }
+        return {
+          id: i.id, name: i.name, live: false, from, to,
+          revenue: walkin.revenue + online.revenue, refunds: copies.reduce((n, c) => n + (c.refund_php ?? 0), 0), kept,
+          net: walkin.revenue + online.revenue + kept, bookings: paid.length, cancelled: cancelled.length,
+          checkedIn: copies.filter((c) => c.status === 'CHECKED_IN').length, walkin, online,
+          packages: [...byPkg.values()].sort((a, b) => b.revenue - a.revenue), services: [],
+          daily: [...daily.values()].sort((a, b) => (a.day < b.day ? -1 : 1)),
+        };
+      }
+    }));
+    res.json({ from, to, islands });
+  });
+
+  // -------------------------------------------------------------------------
+  // Capacity (kept for the Dashboard summary): each island's inventory for a
+  // date range, read live from the islands in parallel and copied to
+  // Supabase (inventory_copies), plus
   // activity statistics per island from the booking copies. An offline
   // island shows its last copy, marked stale.
   // -------------------------------------------------------------------------

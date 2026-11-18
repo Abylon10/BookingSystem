@@ -460,6 +460,85 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       return { ...trend[6], servicesTotal, trend };
     },
 
+    // Records for central's Inventory page: money, walk-in vs online, and how
+    // much each package and service is used, for bookings whose trip starts
+    // between `from` and `to` (inclusive).
+    //  - revenue  : paid bookings (CONFIRMED / CHECKED_IN)
+    //  - kept     : what the island keeps from paid bookings that were
+    //               cancelled (total - refund; half on the trip day)
+    //  - refunds  : money given back
+    //  - services : times booked, units used (units × days), and direct
+    //               revenue from build-your-own trips (day price × units)
+    records(from: string, to: string) {
+      const PAID = "status IN ('CONFIRMED', 'CHECKED_IN')";
+      const inRange = 'day >= ? AND day <= ?';
+      const one = (sql: string) => db.prepare(sql).get(from, to) as Record<string, number | null>;
+      const n = (v: number | null | undefined) => v ?? 0;
+
+      // Totals and the walk-in / online split.
+      const bySource = (source: 'WALKIN' | 'ONLINE') => {
+        const r = one(`SELECT COUNT(*) AS bookings, SUM(guests) AS guests, SUM(total_php) AS revenue
+                         FROM bookings WHERE ${inRange} AND ${PAID} AND source = '${source}'`);
+        return { bookings: n(r.bookings), guests: n(r.guests), revenue: n(r.revenue) };
+      };
+      const walkin = bySource('WALKIN');
+      const online = bySource('ONLINE');
+      const c = one(`SELECT COUNT(*) AS cancelled, SUM(refund_php) AS refunds,
+                            SUM(CASE WHEN refund_php > 0 THEN total_php - refund_php ELSE 0 END) AS kept
+                       FROM bookings WHERE ${inRange} AND status = 'CANCELLED'`);
+      const checkedIn = n(one(`SELECT COUNT(*) AS k FROM bookings WHERE ${inRange} AND status = 'CHECKED_IN'`).k);
+      const revenue = walkin.revenue + online.revenue;
+
+      // Per package (build-your-own trips grouped together).
+      const packages = (db.prepare(
+        `SELECT CASE WHEN package_id = 'custom' THEN 'custom' ELSE package_id END AS id,
+                MAX(CASE WHEN package_id = 'custom' THEN 'Build your own' ELSE package_name END) AS name,
+                COUNT(*) AS bookings, SUM(guests) AS guests, SUM(total_php) AS revenue,
+                SUM(source = 'WALKIN') AS walkin, SUM(source = 'ONLINE') AS online
+           FROM bookings WHERE ${inRange} AND ${PAID} GROUP BY 1 ORDER BY revenue DESC`,
+      ).all(from, to) as Record<string, unknown>[]).map((p) => ({
+        ...p, name: p.id === 'custom' ? 'Build your own' : (getPackage(String(p.id))?.name ?? p.name),
+      }));
+
+      // Per service: how often and how much it is used.
+      const services = db.prepare(
+        `SELECT s.id, s.name, s.kind, s.unit, s.price_php,
+                COUNT(DISTINCT b.id)                                         AS bookings,
+                COALESCE(SUM(l.qty), 0)                                      AS units,
+                COUNT(DISTINCT CASE WHEN b.source = 'WALKIN' THEN b.id END) AS walkin,
+                COUNT(DISTINCT CASE WHEN b.source = 'ONLINE' THEN b.id END) AS online,
+                COALESCE(SUM(CASE WHEN b.package_id = 'custom' THEN l.qty * s.price_php ELSE 0 END), 0) AS direct_revenue
+           FROM services s
+           LEFT JOIN booking_lines l ON l.service_id = s.id
+           LEFT JOIN bookings b ON b.id = l.booking_id AND b.day >= ? AND b.day <= ? AND b.${PAID}
+          WHERE s.id <> ''
+          GROUP BY s.id ORDER BY units DESC, s.name`,
+      ).all(from, to) as Record<string, number | string>[];
+      // LEFT JOIN keeps lines of bookings outside the range with b = NULL;
+      // count only lines whose booking matched.
+      const usage = db.prepare(
+        `SELECT l.service_id AS id, SUM(l.qty) AS units FROM booking_lines l JOIN bookings b ON b.id = l.booking_id
+          WHERE b.day >= ? AND b.day <= ? AND b.${PAID} GROUP BY l.service_id`,
+      ).all(from, to) as { id: string; units: number }[];
+      const unitsOf = Object.fromEntries(usage.map((u) => [u.id, u.units]));
+
+      // Revenue per trip day, walk-in vs online (for the chart).
+      const daily = db.prepare(
+        `SELECT day, SUM(CASE WHEN source = 'WALKIN' THEN total_php ELSE 0 END) AS walkin,
+                     SUM(CASE WHEN source = 'ONLINE' THEN total_php ELSE 0 END) AS online
+           FROM bookings WHERE ${inRange} AND ${PAID} GROUP BY day ORDER BY day`,
+      ).all(from, to);
+
+      return {
+        island_id: island.id, island_name: island.name, from, to,
+        revenue, refunds: n(c.refunds), kept: n(c.kept), net: revenue + n(c.kept),
+        bookings: walkin.bookings + online.bookings, cancelled: n(c.cancelled), checkedIn,
+        walkin, online, packages,
+        services: services.map((s) => ({ ...s, units: unitsOf[String(s.id)] ?? 0 })),
+        daily,
+      };
+    },
+
     // Inventory for `days` days from `day`: per service per day capacity,
     // booked, blocked and on/off. Used by the checklist and by central's
     // Inventory page.

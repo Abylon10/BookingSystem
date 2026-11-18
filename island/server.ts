@@ -38,21 +38,41 @@ import { BookingError, createEngine, type ReserveRequest } from './engine.ts';
 // or the ISLAND_ID environment variable.
 const ISLAND_ID = process.argv[2] ?? process.env.ISLAND_ID;
 
-// Find this island's network address and catalog. Stops the process with a
-// helpful message if the id is missing or misspelled, so everything below can
-// rely on `me` and `island` being defined.
+// Find this island's network address and catalog. The three built-in islands
+// come from the config files. Any other id must be registered by the central
+// admin (dashboard > Islands): its name and booking prefix are then fetched
+// from central, it starts with an empty catalog (its admin adds services and
+// packages in the console), and it uses ISLAND_HTTP_PORT / ISLAND_GRPC_PORT
+// (default 8084 / 50054). Stops with a helpful message otherwise, so
+// everything below can rely on `me` and `island` being defined.
 const network = loadNetwork();
 const seed = loadSeed();
-function findIsland() {
+async function findIsland() {
   const me = network.islands.find((i) => i.id === ISLAND_ID);
   const island = seed.islands.find((i) => i.id === ISLAND_ID);
-  if (!me || !island) {
-    console.error(`Set ISLAND_ID to one of: ${network.islands.map((i) => i.id).join(', ')}`);
+  if (me && island) return { me, island };
+
+  const centralUrl = process.env.CENTRAL_URL?.replace(/\/+$/, '');
+  if (!ISLAND_ID || !centralUrl) {
+    console.error(`Start a built-in island (${network.islands.map((i) => i.id).join(', ')}), or set CENTRAL_URL to start an island registered on central.`);
     process.exit(1);
   }
-  return { me, island };
+  try {
+    const res = await fetch(`${centralUrl}/api/islands/${encodeURIComponent(ISLAND_ID)}`, { signal: AbortSignal.timeout(60_000) });
+    if (res.status === 404) throw new Error(`"${ISLAND_ID}" is not registered on central (dashboard > Islands > Register island)`);
+    if (!res.ok) throw new Error(`central answered HTTP ${res.status}`);
+    const info = await res.json() as { id: string; name: string; prefix: string };
+    console.log(`[${info.id}] registered island "${info.name}" (references ${info.prefix}-…)`);
+    return {
+      me: { id: info.id, host: null, httpPort: Number(process.env.ISLAND_HTTP_PORT ?? 8084), grpcPort: Number(process.env.ISLAND_GRPC_PORT ?? 50054) },
+      island: { id: info.id, name: info.name, prefix: info.prefix, services: [], packages: [] },
+    };
+  } catch (err) {
+    console.error(`Cannot start island "${ISLAND_ID}": ${(err as Error).message}`);
+    process.exit(1);
+  }
 }
-const { me, island } = findIsland();
+const { me, island } = await findIsland();
 
 // Open the local database, add any missing catalog rows / inventory days, and
 // create the booking engine. Unpaid online holds expire after holdMinutes.
@@ -130,6 +150,9 @@ const api: Handlers = {
   SetStaffActive: (req) => ({ ok: engine.setStaffActive(req.username, Boolean(req.active), true) }),
   // Inventory per service per day, and the island's dashboard numbers, for
   // central's Inventory page.
+  // Records for central's Inventory page: revenue, walk-in vs online, and
+  // package / service usage for trips between `from` and `to`.
+  GetRecords: (req) => engine.records(req.from ?? today(), req.to ?? today()),
   GetInventory: (req) => ({
     island_id: island.id, island_name: island.name,
     inventory: engine.inventory(req.day ?? today(), Math.min(31, Math.max(1, Number(req.days) || 7))),

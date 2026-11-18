@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { ROOT, islandOfReference, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
+import { ROOT, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
 import { mountAdmin } from './admin.ts';
 import { PollPeer, mountPolling } from './poll.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
@@ -44,15 +44,36 @@ const sb: SupabaseClient | null = process.env.SUPABASE_URL && process.env.SUPABA
   : null;
 if (!sb) console.warn('[central] SUPABASE_URL / SUPABASE_SERVICE_KEY not set — online booking disabled');
 
-// One entry per island. `client` is a direct gRPC client, only when the
-// island's address is known (LAN/hotspot config); in the cloud config the
-// host is null and the island is reached through its link instead.
-const islands = network.islands.map((i) => ({
-  id: i.id,
-  client: i.host ? new IslandService(`${i.host}:${i.grpcPort}`, grpc.credentials.createInsecure()) : null,
-}));
-type Island = (typeof islands)[number];
+// One entry per island: the three built-in ones (config/seed.json and the
+// network config) plus islands the central admin registered later (Supabase
+// table registered_islands). `client` is a direct gRPC client, only when the
+// island's address is known (LAN/hotspot config); otherwise the island is
+// reached through its link.
+type Island = { id: string; name: string; prefix: string; builtIn: boolean; client: InstanceType<typeof IslandService> | null };
+const seedIslands = loadSeed().islands;
+const islands: Island[] = network.islands.map((i) => {
+  const s = seedIslands.find((x) => x.id === i.id);
+  return {
+    id: i.id, name: s?.name ?? i.id, prefix: s?.prefix ?? i.id.slice(0, 3).toUpperCase(), builtIn: true,
+    client: i.host ? new IslandService(`${i.host}:${i.grpcPort}`, grpc.credentials.createInsecure()) : null,
+  };
+});
 const knownIslands = new Set(islands.map((i) => i.id));
+
+// Adds a registered island to the live list (links, search, accounts…).
+function addIsland(i: { id: string; name: string; prefix: string }) {
+  if (knownIslands.has(i.id)) return;
+  islands.push({ ...i, builtIn: false, client: null });
+  knownIslands.add(i.id);
+}
+// Registered islands are loaded from Supabase when central starts.
+if (sb) {
+  sb.from('registered_islands').select('id, name, prefix').then(({ data, error }) => {
+    if (error) return console.warn(`[central] registered islands not loaded: ${error.message}`);
+    for (const i of data ?? []) addIsland(i);
+    if (data?.length) console.log(`[central] registered islands: ${data.map((i) => i.id).join(', ')}`);
+  });
+}
 
 // Islands currently connected, by island id: over a WebSocket link (Peer) or,
 // on networks that block WebSockets, over HTTPS long polling (PollPeer).
@@ -117,7 +138,9 @@ function callIsland<Res>(island: Island, method: string, request: object, timeou
 // Seed: island names and booking-reference prefixes (MRP-… -> maripipi).
 const seed = loadSeed();
 const islandById = (id: string) => islands.find((i) => i.id === id);
-const ownerOf = (reference: string) => islandById(islandOfReference(seed, reference)?.id ?? '');
+// Owner of a booking reference, by its prefix ("MRP-7F3K2" -> maripipi).
+const ownerOf = (reference: string) => islands.find((i) => i.prefix === String(reference).toUpperCase().split('-')[0]);
+const nameOf = (id: string) => islandById(id)?.name ?? id;
 
 // Turns an island/link error into an HTTP status for the app.
 function httpStatus(err: unknown): number {
@@ -144,7 +167,7 @@ async function fetchIsland(island: Island, day: string, guests: number, extraDay
   const started = performance.now();
   try {
     const reply = await callIsland<{ packages: PackageOut[]; services?: PackageOut[] }>(island, 'SearchAvailability', { day, guests, extraDays, days });
-    const name = seed.islands.find((s) => s.id === island.id)?.name ?? island.id;
+    const name = island.name;
     return {
       id: island.id, status: 'online' as const,
       via: !links.get(island.id)?.open ? 'grpc' : links.get(island.id) instanceof PollPeer ? 'poll' : 'link',
@@ -178,7 +201,7 @@ async function search(mode: 'parallel' | 'sequential', day: string, guests = 1, 
   return {
     mode, day, guests, fanoutMs,
     totalMs: Math.round(performance.now() - started),
-    islands: results.map(({ packages: _p, services: _s, ...r }) => ({ ...r, name: seed.islands.find((s) => s.id === r.id)?.name })),
+    islands: results.map(({ packages: _p, services: _s, ...r }) => ({ ...r, name: nameOf(r.id) })),
     packages: results.flatMap((r) => r.packages),
     // Services checklist per island, for build-your-own trips.
     services: results.flatMap((r) => r.services),
@@ -214,10 +237,28 @@ mountAdmin(app, {
     const island = islandById(islandId);
     return island ? callIsland(island, method, request, timeoutMs) : Promise.reject(new LinkError('NOT_FOUND', 'Unknown island'));
   },
-  islandList: () => islands.map((i) => ({ id: i.id, name: seed.islands.find((s) => s.id === i.id)?.name ?? i.id, linked: Boolean(links.get(i.id)?.open) })),
+  islandList: () => islands.map((i) => ({ id: i.id, name: i.name, prefix: i.prefix, builtIn: i.builtIn, linked: Boolean(links.get(i.id)?.open) })),
+  // Registers a new island (central admin): saved in Supabase, live at once.
+  registerIsland: async (i: { id: string; name: string; prefix: string }) => {
+    if (knownIslands.has(i.id)) throw new LinkError('ALREADY_EXISTS', 'An island with that id already exists');
+    if (islands.some((x) => x.prefix === i.prefix)) throw new LinkError('ALREADY_EXISTS', `Prefix ${i.prefix} is already used`);
+    if (!sb) throw new LinkError('UNAVAILABLE', 'Registering islands needs Supabase on central');
+    const { error } = await sb.from('registered_islands').insert(i);
+    if (error) throw new LinkError('INTERNAL', error.message);
+    addIsland(i);
+    console.log(`[central] registered island ${i.id} (${i.name}, ${i.prefix})`);
+  },
 });
 // Island link fallback over plain HTTPS (central/poll.ts).
 mountPolling(app, { secret, knownIslands, pollPeerFor, storeEvents });
+
+// Public island info, used by a newly registered island node at start-up to
+// learn its name and booking prefix: GET /api/islands/<id>.
+app.get('/api/islands/:id', (req, res) => {
+  const i = islandById(req.params.id);
+  if (!i) return res.status(404).json({ error: 'Island not registered on central' });
+  res.json({ id: i.id, name: i.name, prefix: i.prefix });
+});
 
 // Liveness check used by the app, tests, the cloud host, and the islands'
 // keep-awake ping. Also lists which islands are connected over a link.

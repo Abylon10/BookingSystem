@@ -362,3 +362,35 @@ td.ref { font-weight: 700; letter-spacing: .03em; }
   .sum-grid, .inv-cards, .two-col { grid-template-columns: 1fr; }
   .page-head h1 { font-size: 30px; }
 }
+
+/* ===== Records page, island registration, day/night =================== */
+.mini-label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.section-title { margin: 8px 0 0; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+.sub-title { margin: 0 0 6px; font-weight: 700; }
+.two-col.tight { gap: 18px; }
+.split { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: rgba(108,163,162,.15); margin: 10px 0 6px; }
+.split i { display: block; height: 100%; }
+.s-on { background: #6CA3A2; }
+.s-walk { background: #EA9940; }
+.split-legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.split-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+.howto { margin-top: 14px; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; display: grid; gap: 6px; }
+.howto code { background: rgba(108,163,162,.15); padding: 4px 8px; border-radius: 6px; }
+.theme-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--glass); color: var(--text); display: grid; place-items: center; cursor: pointer; }
+
+/* Day theme: light surfaces, same palette */
+:root[data-theme="light"] {
+  --text: #12212E; --muted: #5b6b75; --glass: rgba(255, 255, 255, .9); --line: rgba(48, 112, 130, .18); --deep: #eef3f5;
+}
+:root[data-theme="light"] body { background: radial-gradient(1200px 600px at 75% -10%, rgba(108,163,162,.25), transparent 60%), #eef3f5; }
+:root[data-theme="light"] .sidebar { background: #ffffff; }
+:root[data-theme="light"] .glass { box-shadow: 0 6px 20px rgba(18, 33, 46, .06); }
+:root[data-theme="light"] .page-head { background: linear-gradient(120deg, #307082, #3f8a9c); color: #fff; }
+:root[data-theme="light"] .page-head .lead { color: #e6f2f4; }
+:root[data-theme="light"] .ticker-items { color: var(--text); }
+:root[data-theme="light"] .ticker-items span b { color: var(--ink); }
+:root[data-theme="light"] .island-card, :root[data-theme="light"] .action { background: #f6f9fa; }
+:root[data-theme="light"] .head-actions input, :root[data-theme="light"] .head-actions select,
+:root[data-theme="light"] .filters input, :root[data-theme="light"] .filters select,
+:root[data-theme="light"] .acc-form input, :root[data-theme="light"] .acc-form select,
+:root[data-theme="light"] .login-card input, :root[data-theme="light"] .bench-controls select { background: #fff; color: var(--text); color-scheme: light; }

@@ -4,7 +4,8 @@
  * Creates an island account straight in the island's database. Normally the
  * central admin creates island admins from the central dashboard (Accounts
  * page); this is the fallback for an island that has no link to central yet
- * (first setup on a LAN, demos, tests).
+ * (first setup on a LAN, demos, tests). Works for the built-in islands and
+ * for islands registered on central.
  *
  *   npm run island:admin -- maripipi --user maria --pass "a long password"
  *   (add --role receptionist for a receptionist account)
@@ -22,9 +23,13 @@ const { values, positionals } = parseArgs({
   options: { user: { type: 'string' }, pass: { type: 'string' }, role: { type: 'string', default: 'node_admin' } },
 });
 const seed = loadSeed();
-const island = seed.islands.find((i) => i.id === positionals[0]);
+// A built-in island from seed.json, or an island registered on central (only
+// its id is needed to open its database here).
+const id = positionals[0] ?? '';
+const island = seed.islands.find((i) => i.id === id)
+  ?? (/^[a-z][a-z0-9]{1,30}$/.test(id) ? { id, name: id, prefix: id.slice(0, 3).toUpperCase(), services: [], packages: [] } : undefined);
 if (!island || !values.user || !values.pass) {
-  console.error(`Usage: npm run island:admin -- <${seed.islands.map((i) => i.id).join('|')}> --user NAME --pass PASSWORD [--role receptionist]`);
+  console.error(`Usage: npm run island:admin -- <${seed.islands.map((i) => i.id).join('|')}|registered island id> --user NAME --pass PASSWORD [--role receptionist]`);
   process.exit(1);
 }
 

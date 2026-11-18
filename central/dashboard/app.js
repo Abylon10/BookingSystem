@@ -2,14 +2,15 @@
  * central/dashboard/app.js
  *
  * Central admin dashboard. After sign-in, the sidebar switches between pages
- * (address #dashboard, #islands, #bookings, #inventory, #accounts, #reports).
+ * (address #dashboard, #islands, #bookings, #inventory, #accounts).
  * Only the page on screen loads its data, and it refreshes every 10 s.
- *   Dashboard : GET /api/admin/summary + inventory + accounts (summaries)
- *   Islands   : summary (island nodes, per-island and per-package charts)
+ *   Dashboard : GET /api/admin/summary + records + accounts (summaries)
+ *   Islands   : summary (nodes, charts) + GET/POST /api/admin/islands (register)
  *   Bookings  : GET /api/admin/bookings?island&status&q
- *   Inventory : GET /api/admin/inventory?day&days
+ *   Inventory : GET /api/admin/records?from&to (revenue, walk-in vs online,
+ *               package/service usage) + reports (7-day trend, benchmark)
  *   Accounts  : GET/POST /api/admin/accounts
- *   Reports   : summary (7-day trend) + GET /api/admin/report-bench
+ * The sun/moon button switches day and night (saved in this browser).
  */
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,8 @@ const ICONS = {
   walk: '<circle cx="13" cy="4" r="2"/><path d="M9 21l3-7 3 3v4M8 11l3-3 3 2 3 1"/>',
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
 };
 function paintIcons(root = document) {
   for (const el of root.querySelectorAll('i[data-icon]:not([data-done])')) {
@@ -119,8 +122,9 @@ $('logout').addEventListener('click', () => { saveToken(null); showLogin(); });
 // Pages
 // ---------------------------------------------------------------------------
 
-const PAGES = ['dashboard', 'islands', 'bookings', 'inventory', 'accounts', 'reports'];
-const page = () => (PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard');
+const PAGES = ['dashboard', 'islands', 'bookings', 'inventory', 'accounts'];
+// Old #reports links open the merged Inventory & reports page.
+const page = () => { const h = location.hash.slice(1); return h === 'reports' ? 'inventory' : PAGES.includes(h) ? h : 'dashboard'; };
 
 // Shows the page named in the address and loads its data.
 function showPage() {
@@ -163,11 +167,25 @@ if (window.Chart) {
     options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { autoSkip: false, maxRotation: 0 } } } },
   });
-  charts.inv = new Chart($('c-inv'), {
-    type: 'line',
-    data: { labels: [], datasets: [] },
+  // Revenue per island, walk-in vs online (stacked bars).
+  charts.revIsland = new Chart($('c-rev-island'), {
+    type: 'bar',
+    data: { labels: [], datasets: [
+      { label: 'Online', data: [], backgroundColor: '#6CA3A2', borderRadius: 6, maxBarThickness: 46 },
+      { label: 'Walk-in', data: [], backgroundColor: '#EA9940', borderRadius: 6, maxBarThickness: 46 },
+    ] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
-      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => `${v}%` } } } },
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => peso(v) } } } },
+  });
+  // Revenue per trip day, all islands, walk-in vs online.
+  charts.revDay = new Chart($('c-rev-day'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Online', data: [], borderColor: '#6CA3A2', backgroundColor: 'rgba(108,163,162,.15)', fill: true, tension: .3, pointRadius: 2 },
+      { label: 'Walk-in', data: [], borderColor: '#EA9940', backgroundColor: 'rgba(234,153,64,.1)', fill: true, tension: .3, pointRadius: 2 },
+    ] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: (v) => peso(v) } } } },
   });
   charts.bench = new Chart($('c-bench'), {
     type: 'bar',
@@ -226,7 +244,7 @@ const utilRow = (label, pct, note = '') => `<div class="util"><div class="util-t
 async function loadDashboard() {
   const [s, inv, acc] = await Promise.all([
     admin('/api/admin/summary'),
-    admin(`/api/admin/inventory?day=${todayStr()}&days=7`).catch(() => null),
+    admin(`/api/admin/records?to=${todayStr()}&from=${addDays(todayStr(), -29)}`).catch(() => null),
     admin('/api/admin/accounts').catch(() => null),
   ]);
   renderTicker(s);
@@ -240,10 +258,13 @@ async function loadDashboard() {
   $('k-revenue-sub').textContent = `refunds ${peso(s.refundsPhp)}`;
   $('sum-islands').innerHTML = islandCards(s.islands);
 
-  // Inventory summary: capacity used per island over 7 days.
-  $('sum-inventory').innerHTML = inv
-    ? inv.islands.map((i) => utilRow(i.name, i.utilisation, `${i.unitsBooked} of ${i.unitsCapacity} units · ${i.servicesOffToday} off today${i.online ? '' : ' · offline copy'}`)).join('')
-    : '<p class="empty">Inventory not available.</p>';
+  // Revenue summary per island (last 30 days), bar = share of the total.
+  if (inv) {
+    const all = Math.max(1, inv.islands.reduce((n, i) => n + i.revenue, 0));
+    $('sum-inventory').innerHTML = inv.islands.map((i) => `<div class="util"><div class="util-top"><b>${esc(i.name)}</b><span>${peso(i.revenue)}</span></div>
+      <div class="util-bar"><i style="width:${Math.round((i.revenue / all) * 100)}%"></i></div>
+      <small>${i.online.bookings} online · ${i.walkin.bookings} walk-in${i.live ? '' : ' · from central copy'}</small></div>`).join('');
+  } else $('sum-inventory').innerHTML = '<p class="empty">Records not available.</p>';
 
   // Accounts summary: admins and receptionists per island.
   $('sum-accounts').innerHTML = acc
@@ -277,7 +298,12 @@ async function loadDashboard() {
 // ---------------------------------------------------------------------------
 
 async function loadIslands() {
-  const s = await admin('/api/admin/summary');
+  const [s, reg] = await Promise.all([admin('/api/admin/summary'), admin('/api/admin/islands')]);
+  // All islands (built-in and registered) with their link state.
+  $('isl-list').innerHTML = reg.islands.map((i) => `<tr><td><b>${esc(i.name)}</b></td><td>${esc(i.id)}</td><td>${esc(i.prefix)}</td>
+    <td>${i.builtIn ? '<span class="tag on">Built-in</span>' : '<span class="tag walk">Registered</span>'}</td>
+    <td><span class="dot ${i.linked ? 'on' : 'off'}" style="display:inline-block"></span> ${i.linked ? 'Linked' : 'Not linked'}</td></tr>`).join('');
+  fillIslandSelect(reg.islands);
   renderTicker(s);
   $('island-cards').innerHTML = islandCards(s.islands);
   $('islands-note').textContent = `checked ${new Date(s.generatedAt).toLocaleTimeString()}`;
@@ -335,52 +361,93 @@ async function loadBookings() {
 $('bk-filter').addEventListener('submit', (e) => { e.preventDefault(); loadBookings(); });
 
 // ---------------------------------------------------------------------------
-// Page: Inventory (statistics per island)
+// Page: Inventory & reports (records per island)
 // ---------------------------------------------------------------------------
 
+// YYYY-MM-DD + n days (local dates).
+function addDays(day, n) { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+// Walk-in vs online split bar.
+const splitBar = (online, walkin) => {
+  const all = Math.max(1, online + walkin);
+  return `<div class="split"><i class="s-on" style="width:${(online / all) * 100}%"></i><i class="s-walk" style="width:${(walkin / all) * 100}%"></i></div>`;
+};
+
 async function loadInventory() {
-  const r = await admin(`/api/admin/inventory?day=${$('inv-day').value}&days=${$('inv-days').value}`);
-  // One card per island: utilisation and activity numbers.
-  $('inv-islands').innerHTML = r.islands.map((i) => `
+  const [r, s] = await Promise.all([
+    admin(`/api/admin/records?from=${$('rec-from').value}&to=${$('rec-to').value}`),
+    admin('/api/admin/summary'),
+  ]);
+  renderTicker(s);
+  setTrend(charts.trend, s.daily);
+  const sum = (f) => r.islands.reduce((n, i) => n + f(i), 0);
+
+  // Totals across all islands.
+  $('r-revenue').textContent = peso(sum((i) => i.revenue));
+  $('r-net').textContent = `net ${peso(sum((i) => i.net))} incl. ${peso(sum((i) => i.kept))} kept from cancellations`;
+  $('r-online').textContent = sum((i) => i.online.bookings);
+  $('r-online-sub').textContent = `${peso(sum((i) => i.online.revenue))} · ${sum((i) => i.online.guests)} guests`;
+  $('r-walkin').textContent = sum((i) => i.walkin.bookings);
+  $('r-walkin-sub').textContent = `${peso(sum((i) => i.walkin.revenue))} · ${sum((i) => i.walkin.guests)} guests`;
+  $('r-refunds').textContent = peso(sum((i) => i.refunds));
+  $('r-refunds-sub').textContent = `${sum((i) => i.cancelled)} cancellation(s)`;
+
+  // One card per island: money and the walk-in / online split.
+  $('rec-islands').innerHTML = r.islands.map((i) => `
     <div class="panel glass inv-card" style="--c:${ISLAND_COLORS[i.id] ?? '#307082'}">
       <div class="inv-head"><b>${esc(i.name)}</b>
-        <span class="pill ${i.online ? 'ok' : 'bad'}">${i.online ? 'Live' : `Offline · copy from ${ago(i.syncedAt)}`}</span></div>
-      <div class="inv-big"><b>${i.utilisation}%</b><span>capacity used<br>${i.unitsBooked} / ${i.unitsCapacity} units</span></div>
-      <div class="util-bar"><i style="width:${Math.min(100, i.utilisation)}%"></i></div>
+        <span class="pill ${i.live ? 'ok' : 'bad'}">${i.live ? 'Live' : 'Offline · central copy'}</span></div>
+      <div class="inv-big"><b>${peso(i.revenue)}</b><span>revenue<br>net ${peso(i.net)}</span></div>
+      ${splitBar(i.online.revenue, i.walkin.revenue)}
+      <div class="split-legend"><span><i class="s-on"></i>Online ${i.online.bookings} · ${peso(i.online.revenue)}</span><span><i class="s-walk"></i>Walk-in ${i.walkin.bookings} · ${peso(i.walkin.revenue)}</span></div>
       <dl class="stats">
-        <div><dt>Bookings</dt><dd>${i.activity.bookings}</dd></div>
-        <div><dt>Online / walk-in</dt><dd>${i.activity.online} / ${i.activity.walkin}</dd></div>
-        <div><dt>Checked in</dt><dd>${i.activity.checkedIn}</dd></div>
-        <div><dt>Cancelled</dt><dd>${i.activity.cancelled}</dd></div>
-        <div><dt>Revenue</dt><dd>${peso(i.activity.revenuePhp)}</dd></div>
-        <div><dt>Refunds</dt><dd>${peso(i.activity.refundsPhp)}</dd></div>
-        <div><dt>Extra days sold</dt><dd>${i.activity.extraDays}</dd></div>
-        <div><dt>Custom trips</dt><dd>${i.activity.custom}</dd></div>
+        <div><dt>Paid bookings</dt><dd>${i.bookings}</dd></div>
+        <div><dt>Checked in</dt><dd>${i.checkedIn}</dd></div>
+        <div><dt>Cancelled</dt><dd>${i.cancelled}</dd></div>
+        <div><dt>Refunds</dt><dd>${peso(i.refunds)}</dd></div>
       </dl>
-      <p class="small muted">${i.servicesOffToday} service(s) switched off on ${fmtDay(r.day)}</p>
     </div>`).join('');
-  // Capacity used per day, one line per island.
-  if (charts.inv) {
-    const days = [...new Set(r.islands.flatMap((i) => i.perDay.map((d) => d.day)))].sort();
-    charts.inv.data.labels = days.map(fmtDay);
-    charts.inv.data.datasets = r.islands.map((i) => ({
-      label: i.name, borderColor: ISLAND_COLORS[i.id] ?? '#307082', backgroundColor: 'transparent', tension: .3, pointRadius: 3,
-      data: days.map((d) => { const x = i.perDay.find((p) => p.day === d); return x && x.capacity ? Math.round((x.booked / x.capacity) * 1000) / 10 : 0; }),
-    }));
-    charts.inv.update('none');
+
+  // Charts: revenue per island (stacked) and per day.
+  if (charts.revIsland) {
+    charts.revIsland.data.labels = r.islands.map((i) => i.name.replace(' Island', ''));
+    charts.revIsland.data.datasets[0].data = r.islands.map((i) => i.online.revenue);
+    charts.revIsland.data.datasets[1].data = r.islands.map((i) => i.walkin.revenue);
+    charts.revIsland.update('none');
   }
-  // Per-service table per island.
-  $('inv-services').innerHTML = r.islands.map((i) => `
+  if (charts.revDay) {
+    const byDay = new Map();
+    for (const i of r.islands) for (const d of i.daily) {
+      const x = byDay.get(d.day) ?? { online: 0, walkin: 0 };
+      x.online += d.online; x.walkin += d.walkin; byDay.set(d.day, x);
+    }
+    const days = [...byDay.keys()].sort();
+    charts.revDay.data.labels = days.map(fmtDay);
+    charts.revDay.data.datasets[0].data = days.map((d) => byDay.get(d).online);
+    charts.revDay.data.datasets[1].data = days.map((d) => byDay.get(d).walkin);
+    charts.revDay.update('none');
+  }
+
+  // Per island: packages and services usage.
+  $('rec-detail').innerHTML = r.islands.map((i) => `
     <div class="panel glass">
-      <div class="panel-head"><h3><i data-icon="boxes"></i>${esc(i.name)} · services</h3><span class="chip">${r.days} days from ${fmtDay(r.day)}</span></div>
-      <div class="table-wrap"><table class="data"><thead><tr><th>Service</th><th>Kind</th><th>Price / day</th><th>Units booked</th><th>Capacity used</th><th>Days off</th></tr></thead><tbody>
-      ${i.services.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.kind)}</td><td>${peso(s.price_php)}</td><td>${s.booked} / ${s.capacity}</td>
-        <td><div class="util-bar inline"><i style="width:${Math.min(100, s.utilisation)}%"></i></div> ${s.utilisation}%</td>
-        <td>${s.offDays ? `<span class="status s-CANCELLED">${s.offDays} off</span>` : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No inventory copy yet</td></tr>'}
-      </tbody></table></div>
+      <div class="panel-head"><h3><i data-icon="island"></i>${esc(i.name)}</h3><span class="chip">${fmtDay(r.from)} – ${fmtDay(r.to)}</span></div>
+      <div class="two-col tight">
+        <div><p class="sub-title">Packages</p>
+          <div class="table-wrap"><table class="data"><thead><tr><th>Package</th><th>Bookings</th><th>Online / walk-in</th><th>Guests</th><th>Revenue</th></tr></thead><tbody>
+          ${i.packages.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bookings}</td><td>${p.online} / ${p.walkin}</td><td>${p.guests}</td><td>${peso(p.revenue)}</td></tr>`).join('')
+            || '<tr><td colspan="5" class="empty">No paid bookings in this period</td></tr>'}
+          </tbody></table></div></div>
+        <div><p class="sub-title">Services used</p>
+          <div class="table-wrap"><table class="data"><thead><tr><th>Service</th><th>Times booked</th><th>Online / walk-in</th><th>Units used</th><th>Direct revenue</th></tr></thead><tbody>
+          ${i.live ? (i.services.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.bookings}</td><td>${x.online} / ${x.walkin}</td><td>${x.units}</td><td>${x.direct_revenue ? peso(x.direct_revenue) : '—'}</td></tr>`).join('')
+            || '<tr><td colspan="5" class="empty">No services</td></tr>') : '<tr><td colspan="5" class="empty">Service usage needs the island online</td></tr>'}
+          </tbody></table></div>
+          <p class="small muted">Units used = units × days (a 2-night room = 2). Direct revenue = build-your-own trips; package revenue is in the table on the left.</p></div>
+      </div>
     </div>`).join('');
 }
-['inv-day', 'inv-days'].forEach((id) => $(id).addEventListener('change', () => loadInventory().catch(showError)));
+['rec-from', 'rec-to'].forEach((id) => $(id).addEventListener('change', () => loadInventory().then(paintIcons).catch(showError)));
 
 // ---------------------------------------------------------------------------
 // Page: Accounts (island admins)
@@ -429,14 +496,9 @@ $('acc-list').addEventListener('click', async (e) => {
 $('acc-refresh').addEventListener('click', () => loadAccounts().catch(showError));
 
 // ---------------------------------------------------------------------------
-// Page: Reports
+// Reports (on the Inventory page): parallel benchmark
 // ---------------------------------------------------------------------------
 
-async function loadReports() {
-  const s = await admin('/api/admin/summary');
-  renderTicker(s);
-  setTrend(charts.trend, s.daily);
-}
 $('bench-run').addEventListener('click', async () => {
   const btn = $('bench-run');
   btn.disabled = true;
@@ -464,10 +526,52 @@ $('bench-run').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Island list in the Bookings filter, and registering a new island
+// ---------------------------------------------------------------------------
+
+function fillIslandSelect(list) {
+  const chosen = $('bk-island').value;
+  $('bk-island').innerHTML = '<option value="">All islands</option>' + list.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
+  $('bk-island').value = chosen;
+}
+$('isl-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const out = $('isl-result');
+  try {
+    const made = await admin('/api/admin/islands', { id: $('isl-id').value, name: $('isl-name').value, prefix: $('isl-prefix').value });
+    out.innerHTML = `<span class="ok-text">Registered <b>${esc(made.name)}</b>. On its laptop run <code>npm run island -- ${esc(made.id)}</code>.</span>`;
+    $('isl-form').reset();
+    loadIslands().then(paintIcons);
+  } catch (err) {
+    out.innerHTML = `<span class="error">${esc(err.message)}</span>`;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Day / night
+// ---------------------------------------------------------------------------
+
+// Applies a theme to the page and to the charts, and remembers it.
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('central-theme', theme); } catch { /* ignore */ }
+  const btn = $('theme-btn');
+  btn.innerHTML = `<i data-icon="${theme === 'dark' ? 'sun' : 'moon'}"></i>`;
+  btn.title = theme === 'dark' ? 'Switch to day' : 'Switch to night';
+  paintIcons(btn);
+  if (window.Chart) {
+    Chart.defaults.color = theme === 'dark' ? '#93a8b3' : '#4f6470';
+    Chart.defaults.borderColor = theme === 'dark' ? 'rgba(108,163,162,.15)' : 'rgba(18,33,46,.1)';
+    for (const c of Object.values(charts)) c.update('none');
+  }
+}
+$('theme-btn').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+// ---------------------------------------------------------------------------
 // Refresh loop: only the page on screen
 // ---------------------------------------------------------------------------
 
-const loaders = { dashboard: loadDashboard, islands: loadIslands, bookings: loadBookings, inventory: loadInventory, accounts: loadAccounts, reports: loadReports };
+const loaders = { dashboard: loadDashboard, islands: loadIslands, bookings: loadBookings, inventory: loadInventory, accounts: loadAccounts };
 function showError(err) {
   if (err.message !== 'signed out') $('ticker').textContent = `Could not load data: ${err.message}`;
 }
@@ -487,11 +591,13 @@ function tick() {
   $('hello').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 $('host').textContent = location.host;
-$('inv-day').value = todayStr();
-for (const id of ['biliran', 'maripipi', 'higatangan']) $('bk-island').insertAdjacentHTML('beforeend', `<option value="${id}">${cap(id)}</option>`);
+$('rec-to').value = todayStr();
+$('rec-from').value = addDays(todayStr(), -29);
+admin('/api/admin/islands').then((r) => fillIslandSelect(r.islands)).catch(() => {});
 tick();
 setInterval(tick, 60_000);
 paintIcons();
+setTheme(document.documentElement.dataset.theme || 'dark');
 showPage();
 // Pages with forms (Bookings filters, Accounts) are not auto-refreshed while typing.
-setInterval(() => { if (!document.hidden && !['bookings', 'accounts'].includes(page())) refresh(); }, 10_000);
+setInterval(() => { if (!document.hidden && !['bookings', 'accounts', 'islands'].includes(page())) refresh(); }, 10_000);

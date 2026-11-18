@@ -6,9 +6,10 @@
     Dashboard  : summary of every other page
     Islands    : island nodes, links, response times, bookings per island
     Bookings   : every island's bookings (central's copies), filterable
-    Inventory  : per-island inventory and activity statistics (synced copy)
+    Inventory  : records and reports: revenue per island, walk-in vs online,
+                 package and service usage, trends, parallel benchmark
     Accounts   : create and manage island admin accounts
-    Reports    : 7-day trend and the parallel worker-thread benchmark
+  Islands also registers new islands. The sun/moon button switches day/night.
   Data comes from /api/admin/* (sign-in required). Behaviour in app.js.
 -->
 <html lang="en">
@@ -19,6 +20,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Day / night: apply the saved theme before the page paints -->
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('central-theme') || 'dark'; } catch (e) { document.documentElement.dataset.theme = 'dark'; }</script>
 </head>
 <body>
 
@@ -42,9 +45,8 @@
       <a href="#dashboard" data-page="dashboard"><i data-icon="grid"></i>Dashboard</a>
       <a href="#islands" data-page="islands"><i data-icon="island"></i>Islands</a>
       <a href="#bookings" data-page="bookings"><i data-icon="calendar"></i>Bookings</a>
-      <a href="#inventory" data-page="inventory"><i data-icon="boxes"></i>Inventory</a>
+      <a href="#inventory" data-page="inventory"><i data-icon="chart"></i>Inventory &amp; reports</a>
       <a href="#accounts" data-page="accounts"><i data-icon="users"></i>Accounts</a>
-      <a href="#reports" data-page="reports"><i data-icon="chart"></i>Reports</a>
     </nav>
     <p class="nav-title">Quick links</p>
     <nav class="links">
@@ -65,6 +67,7 @@
         <span class="badge"><i data-icon="bolt"></i>Live status</span>
         <div class="ticker-items" id="ticker">Connecting…</div>
       </div>
+      <button class="theme-btn" id="theme-btn" title="Day / night"><i data-icon="sun"></i></button>
       <div class="admin">
         <span class="avatar">CA</span>
         <div><b>Central Admin</b><small id="host"></small></div>
@@ -104,7 +107,7 @@
           <div id="sum-islands" class="island-cards"></div>
         </div>
         <div class="panel glass">
-          <div class="panel-head"><h3><i data-icon="boxes"></i>Inventory used (7 days)</h3><a class="more" href="#inventory">Inventory →</a></div>
+          <div class="panel-head"><h3><i data-icon="coin"></i>Revenue (30 days)</h3><a class="more" href="#inventory">Inventory →</a></div>
           <div id="sum-inventory" class="util-list"><p class="empty">Loading…</p></div>
         </div>
         <div class="panel glass">
@@ -120,7 +123,7 @@
           <div id="sum-accounts" class="util-list"><p class="empty">Loading…</p></div>
         </div>
         <div class="panel glass">
-          <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><a class="more" href="#reports">Reports →</a></div>
+          <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><a class="more" href="#inventory">Reports →</a></div>
           <div class="chart-box"><canvas id="c-trend-mini"></canvas></div>
         </div>
       </div>
@@ -141,6 +144,27 @@
           <div class="panel-head"><h3><i data-icon="pie"></i>Bookings by island</h3><span class="chip">All time</span></div>
           <div class="donut-wrap"><canvas id="c-island"></canvas><div class="donut-center"><small>Total</small><b id="donut-total">0</b></div></div>
           <ul id="island-legend" class="legend"></ul>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="plus"></i>Register an island</h3></div>
+          <form id="isl-form" class="acc-form">
+            <label>Island id (its node name)<input id="isl-id" required placeholder="e.g. palompon" pattern="[a-z][a-z0-9]{1,30}"></label>
+            <label>Name<input id="isl-name" required placeholder="e.g. Palompon Islets"></label>
+            <label>Booking prefix (3 letters)<input id="isl-prefix" required placeholder="e.g. PAL" maxlength="3"></label>
+            <button class="btn primary" type="submit">Register island</button>
+            <p id="isl-result" class="small"></p>
+          </form>
+          <div class="howto small muted">
+            <b>Then on the new island's laptop</b> (same <code>.env</code> as the other islands):
+            <code>npm run island -- &lt;island id&gt;</code>
+            It connects to central, appears here and in the app, and starts with an empty catalog. Create its island admin under <a href="#accounts">Accounts</a>, who then adds services and packages in the island console.
+          </div>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="island"></i>All islands</h3></div>
+          <div class="table-wrap"><table class="data"><thead><tr><th>Island</th><th>Id</th><th>Prefix</th><th>Type</th><th>Link</th></tr></thead><tbody id="isl-list"></tbody></table></div>
         </div>
       </div>
       <div class="panel glass">
@@ -167,20 +191,60 @@
       </div>
     </section>
 
-    <!-- ================= Inventory ================= -->
+    <!-- ================= Inventory & reports ================= -->
     <section class="page hidden" id="page-inventory">
-      <div class="page-head"><div class="head-text"><p class="eyebrow">Statistics</p><h1>Inventory</h1>
-        <p class="lead">How much of each island's capacity is used, what is switched off, and the activity behind it. Read live from the islands and kept as a copy on central.</p></div>
+      <div class="page-head"><div class="head-text"><p class="eyebrow">Records &amp; reports</p><h1>Inventory</h1>
+        <p class="lead">What each island earned, how many guests came walk-in or online, and how much each package and service was used. Read from each island's own records.</p></div>
         <div class="head-actions">
-          <input type="date" id="inv-day">
-          <select id="inv-days"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select>
+          <label class="mini-label">From<input type="date" id="rec-from"></label>
+          <label class="mini-label">To<input type="date" id="rec-to"></label>
         </div></div>
-      <div id="inv-islands" class="inv-cards"></div>
-      <div class="panel glass">
-        <div class="panel-head"><h3><i data-icon="chart"></i>Capacity used per day</h3><span class="chip">% of units booked</span></div>
-        <div class="chart-box tall"><canvas id="c-inv"></canvas></div>
+
+      <section class="row kpis">
+        <div class="kpi glass k4"><span class="kicon"><i data-icon="coin"></i></span><div><small>Revenue</small><b id="r-revenue">—</b><em id="r-net"></em></div></div>
+        <div class="kpi glass k2"><span class="kicon"><i data-icon="phone"></i></span><div><small>Online</small><b id="r-online">—</b><em id="r-online-sub"></em></div></div>
+        <div class="kpi glass k1"><span class="kicon"><i data-icon="walk"></i></span><div><small>Walk-in</small><b id="r-walkin">—</b><em id="r-walkin-sub"></em></div></div>
+        <div class="kpi glass k3"><span class="kicon"><i data-icon="x"></i></span><div><small>Refunds</small><b id="r-refunds">—</b><em id="r-refunds-sub"></em></div></div>
+      </section>
+
+      <div id="rec-islands" class="inv-cards"></div>
+
+      <div class="two-col">
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="bars"></i>Revenue per island</h3><span class="chip">Walk-in vs online</span></div>
+          <div class="chart-box tall"><canvas id="c-rev-island"></canvas></div>
+        </div>
+        <div class="panel glass">
+          <div class="panel-head"><h3><i data-icon="chart"></i>Revenue per day</h3><span class="chip">All islands</span></div>
+          <div class="chart-box tall"><canvas id="c-rev-day"></canvas></div>
+        </div>
       </div>
-      <div id="inv-services"></div>
+
+      <div id="rec-detail"></div>
+
+      <p class="section-title">Reports</p>
+      <div class="panel glass">
+        <div class="panel-head"><h3><i data-icon="chart"></i>Bookings, last 7 days</h3><span class="chip">Online vs walk-in</span></div>
+        <div class="chart-box"><canvas id="c-trend"></canvas></div>
+      </div>
+      <div class="panel glass bench">
+        <div class="panel-head">
+          <h3><i data-icon="gauge"></i>Parallel report (worker threads)</h3>
+          <div class="bench-controls">
+            <select id="bench-records">
+              <option value="1000000">1 M records</option>
+              <option value="2000000" selected>2 M records</option>
+              <option value="8000000">8 M records</option>
+            </select>
+            <button id="bench-run" class="btn primary small">Run benchmark</button>
+          </div>
+        </div>
+        <p class="muted small bench-note" id="bench-note">Generates the yearly sales report with 1, 2, 4 and 8 worker threads and compares the time. Runs on the server hosting central.</p>
+        <div class="bench-body">
+          <div class="chart-box"><canvas id="c-bench"></canvas></div>
+          <table class="bench-table" id="bench-table"></table>
+        </div>
+      </div>
     </section>
 
     <!-- ================= Accounts ================= -->
@@ -202,34 +266,6 @@
         <div class="panel glass">
           <div class="panel-head"><h3><i data-icon="users"></i>Accounts per island</h3><button class="btn ghost small" id="acc-refresh">Refresh</button></div>
           <div id="acc-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= Reports ================= -->
-    <section class="page hidden" id="page-reports">
-      <div class="page-head"><div class="head-text"><p class="eyebrow">Analysis</p><h1>Reports</h1>
-        <p class="lead">Booking trends and the parallel report benchmark (worker threads).</p></div></div>
-      <div class="panel glass">
-        <div class="panel-head"><h3><i data-icon="chart"></i>Last 7 days</h3><span class="chip">Online vs walk-in</span></div>
-        <div class="chart-box"><canvas id="c-trend"></canvas></div>
-      </div>
-      <div class="panel glass bench">
-        <div class="panel-head">
-          <h3><i data-icon="gauge"></i>Parallel report (worker threads)</h3>
-          <div class="bench-controls">
-            <select id="bench-records">
-              <option value="1000000">1 M records</option>
-              <option value="2000000" selected>2 M records</option>
-              <option value="8000000">8 M records</option>
-            </select>
-            <button id="bench-run" class="btn primary small">Run benchmark</button>
-          </div>
-        </div>
-        <p class="muted small bench-note" id="bench-note">Generates the yearly sales report with 1, 2, 4 and 8 worker threads and compares the time. Runs on the server hosting central.</p>
-        <div class="bench-body">
-          <div class="chart-box"><canvas id="c-bench"></canvas></div>
-          <table class="bench-table" id="bench-table"></table>
         </div>
       </div>
     </section>
