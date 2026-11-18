@@ -1,5 +1,5 @@
 /**
- * island/engine.ts
+ * island/engine.ts — [PDC: Concurrency control] [PDC: Synchronization]
  *
  * Booking logic of an island node, independent of HTTP / RPC:
  *  - catalog / availability : packages and services for a date, with the
@@ -15,6 +15,13 @@
  *
  * Every change writes an event to the outbox in the same transaction, so
  * central's copy follows without ever editing island data.
+ *
+ * Where the concurrency rules are:
+ *   [PDC: Concurrency control]  reserve(): all units in ONE transaction, each
+ *                               with the guard booked + blocked + qty <= capacity
+ *   [PDC: Idempotency]          reserve(): same request id -> same booking
+ *   [PDC: Synchronization]      transition(): a status changes only from the
+ *                               expected status, so it can happen only once
  *
  * Pricing rules:
  *  - package: price (per guest or per package) covers the package time (a
@@ -232,6 +239,10 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
   // Moves a booking from one of `from` statuses to `to`, atomically: the
   // UPDATE only matches the expected status, so two desks (or a desk and the
   // expiry job) can never both apply it.
+  // [PDC: Synchronization] Changes a booking's status only if it is still in
+  // one of the `from` statuses (checked inside the transaction). Two desks
+  // checking in the same guest, or a payment racing the hold expiry: only
+  // the first one finds the expected status, the other gets a 409.
   function transition(ref: string, from: string[], to: string, extra: (b: BookingRow) => void = () => {}) {
     return transaction(db, () => {
       const b = getBooking(ref);
@@ -343,7 +354,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       return pkg;
     },
 
-    // Reserve a package or a custom trip: HELD (online, expires unless paid)
+    // [PDC: Concurrency control] Reserve a package or a custom trip: HELD (online, expires unless paid)
     // or CONFIRMED (walk-in, paid at the desk). All units for all days are
     // taken in ONE transaction, each with the guard
     // "booked + blocked + qty <= capacity"; if any fails, everything rolls
@@ -362,7 +373,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       }
       checkDay(req.day);
 
-      // Idempotency: the same request id returns the same booking.
+      // [PDC: Idempotency] the same request id returns the same booking.
       const existing = db.prepare('SELECT * FROM bookings WHERE request_id = ?').get(req.requestId) as BookingRow | undefined;
       if (existing) return snapshot(existing);
 
@@ -409,7 +420,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       });
     },
 
-    // Payment succeeded: HELD -> CONFIRMED, only if the hold has not expired.
+    // [PDC: Saga] Payment succeeded: HELD -> CONFIRMED, only if the hold has not expired.
     confirm(ref: string) {
       const b = getBooking(ref);
       if (b?.status === 'HELD' && b.hold_expires_at! < Date.now()) {
@@ -418,7 +429,7 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
       }
       return transition(ref, ['HELD'], 'CONFIRMED');
     },
-    // Payment failed or abandoned: HELD -> RELEASED, units returned.
+    // [PDC: Saga] compensation: payment failed or abandoned -> RELEASED, units returned.
     release: (ref: string) => transition(ref, ['HELD'], 'RELEASED', (b) => giveBack(b.id)),
     // Cancellation: HELD/CONFIRMED -> CANCELLED, units returned, refund recorded.
     cancel: (ref: string) => transition(ref, ['HELD', 'CONFIRMED'], 'CANCELLED', (b) => {

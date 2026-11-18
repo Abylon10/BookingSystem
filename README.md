@@ -1,8 +1,11 @@
-# Biliran Booking System
+# Resortify — Biliran Booking System
 
 Parallel & distributed booking for resorts and tours in Biliran, Philippines.
 Online bookings from an Expo app, walk-in bookings and ID check-in at each island's front desk —
 and each island keeps working when it loses its link to the mainland.
+
+**Where is what in the code** (marshalling, client–server, RPC, parallel and distributed parts):
+**[CODE-MAP.md](CODE-MAP.md)**. Every key spot is tagged `[PDC: …]` — list them with `git grep -n "PDC:"`.
 
 See **[DESIGN.md](DESIGN.md)** for the architecture, race-condition handling, and team plan.
 Teammates: set up your laptop with **[docs/TEAM-SETUP.md](docs/TEAM-SETUP.md)**.
@@ -10,12 +13,12 @@ Islands far apart (different internet connections): **[docs/DEPLOY-CLOUD.md](doc
 central on Render, islands connect out over a secure WebSocket link.
 
 ```
-app/        Expo app (customer + staff scanner)            → phones
-central/    HTTP API for the app, gRPC client, Supabase    → Laptop 1
-island/     gRPC node + SQLite + staff console             → Laptops 2–4
+app/        Resortify guest app (Expo)                     → phones (APK)
+central/    API for the app, calls to islands, Supabase    → cloud (Render) or Laptop 1
+island/     island node: RPC server + SQLite + consoles    → Laptops 2–4
 proto/      gRPC contract (booking.proto)
-shared/     config, gRPC helpers, ticket signing
-loadtest/   race + search benchmarks
+shared/     marshalling, WebSocket RPC link, gRPC helpers, config
+loadtest/   race, search fan-out and worker-thread benchmarks
 config/     seed data and network addresses
 ```
 
@@ -40,7 +43,7 @@ npm run central
 ```
 
 - Staff consoles: http://localhost:8081, :8082, :8083
-- Central API: http://localhost:4000/api/listings
+- Central API: http://localhost:4000/api/packages
 
 ## Run on the hotspot (demo day)
 
@@ -51,14 +54,14 @@ npm run central
 
 ## Central + Supabase
 
-Project: **Booking System** (`xrpkpxxxancrogjddriw`). The migration is applied and the
-listings + 60 days of online pool are seeded.
+Project: **Booking System** (`xrpkpxxxancrogjddriw`). Central keeps read-only copies of
+the islands' bookings and catalog there, plus registered islands and guest accounts.
 
 1. In central's `.env`, set `SUPABASE_SERVICE_KEY` to the project's **secret** key
    (dashboard → Project Settings → API Keys). Never put it in the app or commit it.
-2. `npm run central:seed` tops up the online pool for new days (safe to re-run).
+2. Also set `ADMIN_PASSWORD` (central dashboard sign-in).
 
-To rebuild from scratch on another project: apply `central/supabase/migrations/20261026051112_init.sql`, then seed.
+To rebuild from scratch on another project: apply every file in `central/supabase/migrations/` in order.
 
 The Supabase GitHub integration uses working directory `central` (it reads `central/supabase/`).
 New schema changes go in a new file `central/supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`;

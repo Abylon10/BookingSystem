@@ -1,19 +1,30 @@
 /**
- * central/server.ts
+ * central/server.ts — [PDC: Client-server] [PDC: RPC client] [PDC: Parallel]
  *
- * The "mainland" server (Laptop 1 on a LAN, or a cloud host). One process serves:
- *  - HTTP API for the Expo app : search, book, list, cancel
- *  - calls to the islands       : parallel search fan-out, register/cancel
- *                                 online tickets on the owning island
- *  - island events (outbox sync): received from every island
+ * The "mainland" server (cloud host, or Laptop 1 on a LAN). One process serves:
+ *  - HTTP API for the guest app : search, quote, book, pay, cancel, my trips
+ *  - calls to the islands        : parallel search fan-out and the online
+ *                                  booking saga (hold -> pay -> confirm)
+ *  - island events (outbox sync) : received from every island, stored in Supabase
  *
- * Two ways to reach an island, chosen per call:
+ * Three ways to reach an island, chosen per call in callIsland():
  *  - island link (WebSocket, /island-link): the island connected OUT to us.
  *    Works across the internet, through home routers and mobile-data NAT.
+ *  - HTTPS polling (central/poll.ts): for networks that block WebSockets.
  *  - direct gRPC to the island's IP: only on a shared LAN / hotspot.
  *
- * Storage is Supabase (Postgres). Central owns the ONLINE pool; each island
- * owns its WALK-IN pool. Neither writes the other's data directly.
+ * Central owns NO rooms: every island is the only writer of its own
+ * inventory and bookings. Central keeps read-only copies (Supabase) for the
+ * dashboard and for lookups while an island is offline.
+ *
+ * Where to find each part in this file:
+ *   [PDC: RPC client]        callIsland(): one call to one island, any transport
+ *   [PDC: Parallel]          search(): all islands asked at the same time
+ *   [PDC: Saga]              POST /api/bookings (hold) and /pay (confirm/release)
+ *   [PDC: Idempotency]       Idempotency-Key on POST /api/bookings
+ *   [PDC: Replication]       storeEvents(): island outbox -> central copies
+ *   [PDC: RPC over WebSocket] the /island-link WebSocket server (bottom)
+ * Marshalling of every call and reply: shared/marshal.ts.
  */
 import express from 'express';
 import { createServer } from 'node:http';
@@ -26,7 +37,7 @@ import { mountAdmin } from './admin.ts';
 import { PollPeer, mountPolling } from './poll.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
 import { Peer, LinkError, errorText, verifyHello } from '../shared/link.ts';
-import { newCode, signTicket } from '../shared/ticket.ts';
+import { errorFromGrpc, frame, fromInvocation, marshal, parseFrame, toInvocation, unmarshal, type Invocation } from '../shared/marshal.ts';
 
 // ===========================================================================
 // Startup
@@ -101,6 +112,9 @@ function pollPeerFor(islandId: string): PollPeer {
 // island to switch to HTTPS polling.
 const wsTimeouts = new Map<string, number>();
 
+// [PDC: RPC client] Calls one method on one island over whichever transport
+// that island is reachable on, with a deadline. All three transports return
+// the same reply shape and the same error codes (shared/marshal.ts).
 function callIsland<Res>(island: Island, method: string, request: object, timeoutMs = 1500): Promise<Res> {
   const link = links.get(island.id);
   if (link instanceof Peer && link.open) {
@@ -124,12 +138,10 @@ function callIsland<Res>(island: Island, method: string, request: object, timeou
   if (island.client) {
     // LAN gRPC: every method travels as Invoke(method, json). Errors come back
     // as "CODE: message" and are turned into the same LinkError as the link.
-    return call<object, { json: string }>(island.client, 'Invoke', { method, json: JSON.stringify(request) }, timeoutMs).then(
-      (r) => JSON.parse(r.json) as Res,
-      (err) => {
-        const m = /^([A-Z_]+): (.*)$/.exec(errorText(err));
-        throw m ? new LinkError(m[1], m[2]) : err;
-      },
+    // [PDC: Marshalling] request -> Invocation -> protobuf (by gRPC), and back.
+    return call<Invocation, Invocation>(island.client, 'Invoke', toInvocation(method, request), timeoutMs).then(
+      (r) => fromInvocation<Res>(r),
+      (err) => { throw errorFromGrpc(err); },
     );
   }
   return Promise.reject(new LinkError('UNAVAILABLE', `${island.id} is not connected`));
@@ -188,6 +200,7 @@ async function fetchIsland(island: Island, day: string, guests: number, extraHou
 // The sequential mode exists only so the benchmark can compare the two.
 // An offline island's packages are left out: only the owning island can
 // confirm a booking, so central never sells what it cannot confirm.
+// [PDC: Parallel] [PDC: Distributed search]
 async function search(mode: 'parallel' | 'sequential', day: string, guests = 1, extraHours = 0, days = 1) {
   const started = performance.now();
   let results: Awaited<ReturnType<typeof fetchIsland>>[];
@@ -349,7 +362,7 @@ app.post('/api/me/delete', async (req, res) => {
   res.json({ deleted: true });
 });
 
-// Online booking, step 1 — HOLD. The owning island reserves every service
+// [PDC: Saga] [PDC: Idempotency] Online booking, step 1 — HOLD. The owning island reserves every service
 // (every day, for longer stays) in one atomic transaction (same code and rows as a walk-in) and
 // returns a HELD booking that expires if unpaid. Idempotency-Key makes a retry
 // after a timeout return the same booking instead of a second one.
@@ -372,7 +385,7 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-// Step 2 — PAY (simulated), then CONFIRM or RELEASE. This is the saga:
+// [PDC: Saga] Step 2 — PAY (simulated), then CONFIRM or RELEASE. This is the saga:
 // hold -> pay -> confirm; if payment fails, the compensating step releases
 // the hold so the units go back on sale at once.
 app.post('/api/bookings/:ref/pay', async (req, res) => {
@@ -436,6 +449,7 @@ interface IslandEvent {
 
 // Stores a batch of island events and returns the ids it accepted. Called for
 // PushEvents over either transport.
+// [PDC: Replication] [PDC: Idempotency] (duplicate events are ignored)
 async function storeEvents(events: IslandEvent[]): Promise<string[]> {
   // Without Supabase there is nowhere to store events: log and acknowledge
   // them anyway so the sync can still be demonstrated.
@@ -448,7 +462,7 @@ async function storeEvents(events: IslandEvent[]): Promise<string[]> {
   //    re-delivery harmless (an island resends if it missed our ack).
   const { error } = await sb.from('island_events').upsert(events.map((e) => ({
     event_id: e.event_id, island_id: e.island_id, type: e.type, booking_id: e.booking_id || null,
-    payload: JSON.parse(e.payload_json || '{}'), created_at: new Date(Number(e.created_at_ms)).toISOString(),
+    payload: unmarshal(e.payload_json), created_at: new Date(Number(e.created_at_ms)).toISOString(),
   })), { onConflict: 'event_id', ignoreDuplicates: true });
   if (error) throw new LinkError('INTERNAL', error.message);
 
@@ -458,7 +472,7 @@ async function storeEvents(events: IslandEvent[]): Promise<string[]> {
   //    booking back to an earlier status.
   const latest = new Map<string, Record<string, unknown>>();
   for (const e of events.filter((x) => x.type === 'BOOKING_UPDATED')) {
-    const b = JSON.parse(e.payload_json);
+    const b = unmarshal<Record<string, unknown> & { reference: string; updated_at: number }>(e.payload_json);
     const prev = latest.get(b.reference) as { updated_at: number } | undefined;
     if (!prev || prev.updated_at <= b.updated_at) latest.set(b.reference, b);
   }
@@ -500,12 +514,9 @@ wss.on('connection', (ws) => {
 
   ws.once('message', (data) => {
     clearTimeout(helloTimer);
-    let hello;
-    try {
-      hello = JSON.parse(data.toString());
-    } catch {
-      return ws.close(4002, 'bad hello');
-    }
+    // [PDC: Security] first frame must be a signed hello (shared/link.ts).
+    const hello = parseFrame(data.toString());
+    if (!hello) return ws.close(4002, 'bad hello');
     if (hello.t !== 'hello' || !knownIslands.has(hello.island) || !verifyHello(secret, hello.island, hello.ts, hello.sig)) {
       console.warn('[central] rejected an island link (bad island id or signature)');
       return ws.close(4003, 'not authorized');
@@ -519,7 +530,7 @@ wss.on('connection', (ws) => {
       PushEvents: async (req: { events: IslandEvent[] }) => ({ accepted_event_ids: await storeEvents(req.events) }),
     });
     links.set(islandId, peer);
-    ws.send(JSON.stringify({ t: 'welcome', island: islandId }));
+    ws.send(marshal(frame.welcome(islandId)));
     console.log(`[central] ${islandId} connected over island link`);
 
     // Heartbeat every 25 s: keeps the connection alive through cloud proxies

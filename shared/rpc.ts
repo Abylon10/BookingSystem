@@ -1,5 +1,5 @@
 /**
- * shared/rpc.ts
+ * shared/rpc.ts — [PDC: RPC] [PDC: Middleware]
  *
  * gRPC plumbing shared by central and the islands. Loads proto/booking.proto at
  * runtime (no code generation step) and exposes:

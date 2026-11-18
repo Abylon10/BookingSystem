@@ -1,5 +1,5 @@
 /**
- * central/reports.ts
+ * central/reports.ts — [PDC: Multithreading] [PDC: Parallel]
  *
  * Data-parallel report generation with a pool of worker threads (the
  * parallel experiment in the design: speedup with 1 / 2 / 4 / 8 threads).
@@ -71,7 +71,8 @@ function merge(parts: Partial[]): Partial {
   return out;
 }
 
-// Builds the report for `records` records using `threads` worker threads.
+// [PDC: Parallel] Builds the report for `records` records using `threads` worker threads:
+// split the range, run the parts at the same time, merge (the serial part).
 // Returns the merged report and the time of split + parallel work + merge.
 export async function parallelReport(records: number, threads: number) {
   await ensureWorkers(threads);

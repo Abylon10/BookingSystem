@@ -1,7 +1,7 @@
 /**
- * central/poll.ts
+ * central/poll.ts — [PDC: Client-server communication] [PDC: Fault tolerance]
  *
- * HTTPS long-polling fallback for the island link.
+ * HTTPS long-polling fallback for the island link (transport 3 of 3).
  *
  * Some networks (school/office Wi-Fi, proxies, antivirus "web shields") let
  * ordinary HTTPS requests through but block or break WebSocket connections.
@@ -14,10 +14,12 @@
  *   island ── POST /island-poll/events ► central   outbox sync (PushEvents)
  *
  * Every request carries "X-Island-Auth: <island>.<ms>.<hmac>", signed with the
- * shared TICKET_SECRET exactly like the WebSocket hello.
+ * shared TICKET_SECRET exactly like the WebSocket hello. Calls and replies use
+ * the same frames as the WebSocket link (shared/marshal.ts).
  */
 import type express from 'express';
-import { LinkError, verifyHello } from '../shared/link.ts';
+import { verifyHello } from '../shared/link.ts';
+import { LinkError, replyValue, type Reply } from '../shared/marshal.ts';
 
 // How long one poll request waits for work before answering empty. Kept under
 // common 30 s proxy timeouts.
@@ -27,7 +29,7 @@ const ALIVE_MS = POLL_WAIT_MS + 15_000;
 
 interface Pending {
   resolve: (value: unknown) => void;
-  reject: (err: LinkError) => void;
+  reject: (err: Error) => void;
   timer: NodeJS.Timeout;
 }
 interface Call { id: number; m: string; p: unknown }
@@ -87,13 +89,12 @@ export class PollPeer {
   }
 
   // Settles a call with the island's reply.
-  reply(r: { id: number; ok: boolean; p?: unknown; e?: { code?: string; message?: string } }): void {
+  reply(r: Reply): void {
     const p = this.pending.get(r.id);
     if (!p) return; // already timed out
     clearTimeout(p.timer);
     this.pending.delete(r.id);
-    if (r.ok) p.resolve(r.p);
-    else p.reject(new LinkError(r.e?.code ?? 'INTERNAL', r.e?.message ?? 'remote error'));
+    try { p.resolve(replyValue(r)); } catch (err) { p.reject(err as Error); }
   }
 
   // Replaced by a WebSocket link: fail anything still waiting.

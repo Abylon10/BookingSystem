@@ -1,5 +1,5 @@
 /**
- * central/report-worker.ts
+ * central/report-worker.ts — [PDC: Multithreading]
  *
  * One worker thread of the parallel report pool. It stays alive and handles
  * jobs: each job is a range of record numbers [start, end). The worker

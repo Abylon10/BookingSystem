@@ -18,6 +18,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ROOT, addDays, today, type Seed, type SeedIsland } from '../shared/config.ts';
+import { marshal } from '../shared/marshal.ts';
 
 export type Db = DatabaseSync;
 
@@ -236,7 +237,7 @@ export function extendInventory(db: Db, days: number, serviceId?: string): void 
   });
 }
 
-// Runs fn inside BEGIN IMMEDIATE and commits, or rolls back if it throws.
+// [PDC: Synchronization] Runs fn inside BEGIN IMMEDIATE and commits, or rolls back if it throws.
 // IMMEDIATE takes the write lock up front, so concurrent writers queue up
 // instead of interleaving their reads and writes.
 export function transaction<T>(db: Db, fn: () => T): T {
@@ -251,9 +252,9 @@ export function transaction<T>(db: Db, fn: () => T): T {
   }
 }
 
-// Adds an event to the outbox. Must run inside the same transaction as the
+// [PDC: Replication] Adds an event to the outbox. Must run inside the same transaction as the
 // change it describes (outbox pattern).
 export function addOutbox(db: Db, type: string, bookingId: string | null, payload: unknown): void {
   db.prepare('INSERT INTO outbox (event_id, type, booking_id, payload, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(randomUUID(), type, bookingId, JSON.stringify(payload), Date.now());
+    .run(randomUUID(), type, bookingId, marshal(payload), Date.now());
 }

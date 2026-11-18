@@ -1,7 +1,9 @@
 /**
- * island/server.ts
+ * island/server.ts — [PDC: Distributed node] [PDC: RPC server]
  *
- * Entry point of an island node (runs on Laptops 2-4). One process serves:
+ * Entry point of an island node (runs on Laptops 2-4). Each island is an
+ * independent node with its own database; it is the ONLY writer of its own
+ * rooms and bookings. One process serves:
  *  - IslandService      : answers central (catalog, availability, hold /
  *                         confirm / release / cancel online bookings, lookup)
  *                         over whichever transport works:
@@ -19,6 +21,16 @@
  *
  * Start with:  node island/server.ts <islandId>   (or npm run island:<id>)
  * Cloud mode:  set CENTRAL_URL=https://<central host> and NETWORK=cloud in .env
+ *
+ * Where to find each part in this file:
+ *   [PDC: RPC server]            the `api` map: methods central can call
+ *   [PDC: Fault tolerance]       serve(): partition switch, simulated latency
+ *   transport 1 (gRPC)           grpcHandlers.Invoke
+ *   transport 2 (WebSocket)      connectLink()
+ *   transport 3 (HTTPS polling)  pollLoop()
+ *   [PDC: Replication]           drainOutbox(): island -> central sync
+ *   [PDC: Client-server]         HTTP routes for the staff consoles (bottom)
+ * Marshalling of every call and reply: shared/marshal.ts.
  */
 import express from 'express';
 import { join } from 'node:path';
@@ -27,6 +39,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ROOT, loadNetwork, loadSeed, ticketSecret, today } from '../shared/config.ts';
 import { CentralService, IslandService, call, grpc } from '../shared/rpc.ts';
 import { LinkError, Peer, helloSignature, type Handlers } from '../shared/link.ts';
+import { frame, fromInvocation, grpcErrorDetails, marshal, parseFrame, toInvocation, type Invocation } from '../shared/marshal.ts';
 import { openDb, seedIsland } from './db.ts';
 import { BookingError, createEngine, type ReserveRequest } from './engine.ts';
 
@@ -97,8 +110,9 @@ const LINK_LATENCY_MS = Number(process.env.LINK_LATENCY_MS ?? 0);
 // IslandService handlers (central is the caller)
 // ===========================================================================
 
-// The methods central may call, as plain functions. The same map is served
-// over the island link and over the LAN gRPC server (both set up below).
+// [PDC: RPC server] The methods central may call, as plain functions. The
+// same map is served over all three transports (set up below), so the
+// booking logic never depends on how the call arrived.
 const api: Handlers = {
   // Catalog: this island's active packages and their services.
   GetCatalog: () => ({ island_id: island.id, packages: engine.catalog() }),
@@ -163,7 +177,8 @@ const api: Handlers = {
   Ping: () => ({ island_id: island.id, server_time_ms: Date.now() }),
 };
 
-// Applies the cross-cutting rules to every call, whichever transport it came on:
+// [PDC: Fault tolerance] Applies the cross-cutting rules to every call,
+// whichever transport it came on:
 //  1. while partitioned, refuse with UNAVAILABLE (exactly what a dead link
 //     looks like to central, so its timeouts/fallbacks get exercised)
 //  2. wait LINK_LATENCY_MS before answering (simulated sea link)
@@ -182,9 +197,12 @@ type GrpcHandler = (call: grpc.ServerUnaryCall<any, any>, cb: grpc.sendUnaryData
 // Errors keep their code in the message as "CODE: text" for central.
 const grpcHandlers: Record<string, GrpcHandler> = {
   Invoke: (rpc, cb) => {
-    serve(rpc.request.method, JSON.parse(rpc.request.json || '{}')).then(
-      (res) => cb(null, { method: rpc.request.method, json: JSON.stringify(res) }),
-      (err) => cb({ code: err.code === 'UNAVAILABLE' ? grpc.status.UNAVAILABLE : grpc.status.UNKNOWN, details: `${err.code ?? 'INTERNAL'}: ${err.message}` }),
+    // [PDC: Marshalling] Invocation { method, json } -> request object, and
+    // the result (or error with its code) back into an Invocation.
+    const inv = rpc.request as Invocation;
+    serve(inv.method, fromInvocation(inv)).then(
+      (res) => cb(null, toInvocation(inv.method, res)),
+      (err) => cb({ code: err.code === 'UNAVAILABLE' ? grpc.status.UNAVAILABLE : grpc.status.UNKNOWN, details: grpcErrorDetails(err) }),
     );
   },
 };
@@ -201,6 +219,8 @@ grpcServer.bindAsync(`0.0.0.0:${me.grpcPort}`, grpc.ServerCredentials.createInse
 });
 
 // --- Transport 2: island link, for central in the cloud ---------------------
+// [PDC: Client-server communication] The island is the network CLIENT (it
+// connects out) but the RPC SERVER (it answers central's calls).
 
 // Base URL of central, e.g. https://biliran-central.onrender.com. When set,
 // the island keeps one outgoing WebSocket open to it and answers central's
@@ -244,14 +264,13 @@ async function pollLoop(): Promise<void> {
         console.log(`[${island.id}] connected to central at ${CENTRAL_URL} (HTTPS polling)`);
       }
       backoff = 1000;
-      // Run each call and post its reply; calls run concurrently, like on the WebSocket link.
+      // Run each call and post its reply (marshalled like a link frame);
+      // calls run concurrently, like on the WebSocket link.
       for (const r of requests) {
-        serve(r.m, r.p).then(
-          (p) => ({ id: r.id, ok: true, p }),
-          (e) => ({ id: r.id, ok: false, e: { code: e.code ?? 'INTERNAL', message: e.message } }),
-        ).then((reply) => fetch(`${CENTRAL_URL}/island-poll/reply`, {
-          method: 'POST', headers: pollAuth(), body: JSON.stringify(reply),
-        })).catch(() => { /* central retries via timeout */ });
+        serve(r.m, r.p).then((p) => frame.ok(r.id, p), (e) => frame.fail(r.id, e))
+          .then((reply) => fetch(`${CENTRAL_URL}/island-poll/reply`, {
+            method: 'POST', headers: pollAuth(), body: marshal(reply),
+          })).catch(() => { /* central retries via timeout */ });
       }
     } catch (err) {
       pollConnected = false;
@@ -297,7 +316,7 @@ function connectLink(): void {
 
   ws.on('open', () => {
     const ts = Date.now();
-    ws.send(JSON.stringify({ t: 'hello', island: island.id, ts, sig: helloSignature(secret, island.id, ts) }));
+    ws.send(marshal(frame.hello(island.id, ts, helloSignature(secret, island.id, ts))));
     link = new Peer(ws, linkHandlers);
   });
 
@@ -313,8 +332,7 @@ function connectLink(): void {
   }, 10_000);
   ws.on('close', () => clearInterval(watchdog));
   ws.on('message', (data) => {
-    const msg = data.toString();
-    if (msg.includes('"t":"welcome"')) {
+    if (parseFrame(data.toString())?.t === 'welcome') {
       welcomed = true;
       failedWsAttempts = 0;
       reconnectDelay = 1000;
@@ -389,6 +407,7 @@ interface OutboxRow {
   created_at: number;
 }
 
+// [PDC: Replication] [PDC: Fault tolerance] Outbox pattern.
 // Sends up to 50 unsent events to central, oldest first, and marks the ones
 // central acknowledged as sent. If central is unreachable nothing is marked,
 // so the same events are retried on the next tick: nothing is ever lost.
@@ -411,7 +430,7 @@ async function drainOutbox() {
     if (link?.open) ack = await link.call('PushEvents', batch, 10_000);
     else if (CENTRAL_URL && linkMode === 'poll') {
       const res = await fetch(`${CENTRAL_URL}/island-poll/events`, {
-        method: 'POST', headers: pollAuth(), body: JSON.stringify(batch), signal: AbortSignal.timeout(15_000),
+        method: 'POST', headers: pollAuth(), body: marshal(batch), signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return;
       ack = await res.json() as { accepted_event_ids: string[] };
