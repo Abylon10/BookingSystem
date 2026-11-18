@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Resortify",
-    "slug": "biliran-booking",
+    "slug": "resortify",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,6 +25,12 @@
       "expo-web-browser",
       "expo-notifications"
     ],
-    "scheme": "biliranbooking"
+    "scheme": "biliranbooking",
+    "owner": "abylons-team",
+    "extra": {
+      "eas": {
+        "projectId": "ed6222dc-17e4-4e51-82e4-ee5202620f24"
+      }
+    }
   }
 }
