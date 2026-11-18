@@ -2,34 +2,50 @@
  * app/src/scene.tsx
  *
  * Package pictures. A real photo is used when one is registered in
- * PHOTOS below; otherwise a drawn SVG scene in the app palette is shown
- * (falls, island, sandbar or sunset), so the app looks finished without
- * any image files and works offline.
+ * PHOTOS (per package) or ISLAND_PHOTOS (per island) below; otherwise a
+ * drawn SVG scene in the app palette is shown (falls, island, sandbar or
+ * sunset). Photos are bundled in the app, so they also show offline.
  *
- * To add a photo: put e.g. assets/packages/biliran-falls-day.jpg in the app
- * and add `'biliran-falls-day': require('../assets/packages/biliran-falls-day.jpg')`
- * to PHOTOS.
+ * To add a photo: put e.g. assets/packages/biliran-falls.jpg in the app and
+ * add `'biliran-falls-day': require('../assets/packages/biliran-falls.jpg')`
+ * to PHOTOS (or the island id to ISLAND_PHOTOS).
  */
 import { Image, type ImageSourcePropType, type StyleProp, type ViewStyle, View } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
-// Package id -> photo. Empty until the team adds real Biliran photos.
-const PHOTOS: Record<string, ImageSourcePropType> = {};
+// Package id -> photo.
+const PHOTOS: Record<string, ImageSourcePropType> = {
+  'higatangan-sandbar-day': require('../assets/packages/higatangan-sandbar.png'),
+  'higatangan-escape-2d1n': require('../assets/packages/higatangan-inn.png'),
+};
+
+// Island id -> photo, used for that island's other packages (including ones
+// an island admin adds later) and for its build-your-own trips.
+const ISLAND_PHOTOS: Record<string, ImageSourcePropType> = {
+  higatangan: require('../assets/packages/higatangan-sandbar.png'),
+};
 
 // The four drawn scenes.
 export type SceneKind = 'falls' | 'island' | 'sandbar' | 'sunset';
 
-// Picks a scene from the package id (keywords in the seed ids).
+// Picks a scene from the package id (keywords in the seed ids). An island id
+// on its own gets that island's typical scene.
 export function sceneFor(packageId: string): SceneKind {
-  if (packageId.includes('falls')) return 'falls';
-  if (packageId.includes('sandbar')) return 'sandbar';
+  if (packageId === 'biliran' || packageId.includes('falls')) return 'falls';
+  if (packageId === 'higatangan' || packageId.includes('sandbar')) return 'sandbar';
   if (/overnight|2d1n|escape|lagundi/.test(packageId)) return 'sunset';
   return 'island';
 }
 
+// The photo for a package id or island id: exact package first, then the
+// island it belongs to (ids start with the island id, e.g. "higatangan-…").
+function photoFor(id: string) {
+  return PHOTOS[id] ?? ISLAND_PHOTOS[id] ?? ISLAND_PHOTOS[id.split('-')[0]];
+}
+
 // Shows the package photo, or its drawn scene, filling `style`.
 export function PackageImage({ packageId, style }: { packageId: string; style?: StyleProp<ViewStyle> }) {
-  const photo = PHOTOS[packageId];
+  const photo = photoFor(packageId);
   return (
     <View style={[{ overflow: 'hidden', backgroundColor: '#A8E8F9' }, style]}>
       {photo

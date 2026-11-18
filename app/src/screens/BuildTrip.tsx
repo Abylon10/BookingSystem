@@ -72,7 +72,7 @@ export function BuildTrip({ island, startDay, onBack, onContinue }: {
       <ScrollView contentContainerStyle={st.body}>
         {/* Island banner */}
         <View style={st.banner}>
-          <PackageImage packageId={island.id === 'biliran' ? 'falls' : island.id === 'higatangan' ? 'sandbar' : 'island'} style={StyleSheet.absoluteFill} />
+          <PackageImage packageId={island.id} style={StyleSheet.absoluteFill} />
           <View style={st.bannerShade} />
           <Text style={st.bannerTitle}>{island.name}</Text>
           <Text style={st.bannerSub}>Choose the services you want, for as many days as you like.</Text>

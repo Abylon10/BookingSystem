@@ -61,7 +61,7 @@ export function Confirmation({ booking: initial, onDone, justPaid }: { booking: 
       <ScrollView contentContainerStyle={st.body}>
         {/* Pass card: picture, big reference, status */}
         <View style={st.pass}>
-          <PackageImage packageId={b.package_id} style={st.passImg} />
+          <PackageImage packageId={b.package_id === 'custom' ? b.island_id : b.package_id} style={st.passImg} />
           <View style={st.passBody}>
             <Text style={st.passLabel}>Show this at the {b.island_name} front desk</Text>
             <Text style={st.ref} selectable>{b.reference}</Text>

@@ -253,7 +253,7 @@ tr.click:hover td { background: #f7fafb; }
 /* Sign-in page */
 .login-page { background: var(--page); }
 .login-wrap { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
-.login-art { background: linear-gradient(160deg, var(--primary), var(--ink)); color: #fff; padding: 40px; display: flex; flex-direction: column; justify-content: space-between; }
+.login-art { background: linear-gradient(160deg, var(--primary), var(--ink)) center / cover; color: #fff; padding: 40px; display: flex; flex-direction: column; justify-content: space-between; }
 .login-art h1 { font-size: 2.6rem; margin-bottom: 10px; }
 .login-art p { color: #d6e6ea; max-width: 420px; line-height: 1.5; }
 .brand.light { border: none; padding: 0; color: #fff; }

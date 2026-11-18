@@ -55,6 +55,13 @@
         $('island-id').textContent = s.island.id;
         document.title = `${s.island.name} · Sign in`;
         if (s.staff) location.replace('index.html');            // still signed in
+        // Island photo behind the welcome panel, when img/<island>.png exists.
+        const photo = new Image();
+        photo.onload = () => {
+          document.querySelector('.login-art').style.backgroundImage =
+            `linear-gradient(160deg, rgba(48,112,130,.55), rgba(18,33,46,.85)), url(img/${s.island.id}.png)`;
+        };
+        photo.src = `img/${s.island.id}.png`;
         if (!s.hasAccounts) $('no-accounts').classList.remove('hidden');
       });
 
