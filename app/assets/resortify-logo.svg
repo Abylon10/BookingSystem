@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Resortify</title>
+  <defs>
+    <clipPath id="badge"><circle cx="256" cy="256" r="236"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A8E8F9"/>
+      <stop offset="1" stop-color="#E6F8FD"/>
+    </linearGradient>
+    <path id="arc" d="M 92 256 A 164 164 0 0 1 420 256"/>
+    <!-- one palm frond, base at 0,0, pointing right -->
+    <path id="frond" d="M0 0 C34 -34 92 -40 138 -8 L120 -10 L116 4 L100 -12 L94 6 L78 -12 L70 6 L56 -9 L46 6 L34 -5 L22 6 Z"/>
+  </defs>
+
+  <!-- badge -->
+  <circle cx="256" cy="256" r="246" fill="#013C58"/>
+  <g clip-path="url(#badge)">
+    <rect width="512" height="512" fill="url(#sky)"/>
+
+    <!-- sun -->
+    <g transform="translate(256 196)">
+      <g stroke="#F5A201" stroke-width="9" stroke-linecap="round">
+        <line x1="0" y1="-62" x2="0" y2="-82"/>
+        <line x1="0" y1="62" x2="0" y2="82"/>
+        <line x1="-62" y1="0" x2="-82" y2="0"/>
+        <line x1="62" y1="0" x2="82" y2="0"/>
+        <line x1="44" y1="-44" x2="58" y2="-58"/>
+        <line x1="-44" y1="-44" x2="-58" y2="-58"/>
+        <line x1="44" y1="44" x2="58" y2="58"/>
+        <line x1="-44" y1="44" x2="-58" y2="58"/>
+      </g>
+      <circle r="50" fill="#FFD35B" stroke="#F5A201" stroke-width="6"/>
+    </g>
+
+    <!-- sea -->
+    <path d="M0 352 C80 340 140 362 220 352 C300 342 360 360 512 350 L512 512 L0 512 Z" fill="#00537A"/>
+    <path d="M30 392 h50 M120 410 h40 M210 440 h56" stroke="#A8E8F9" stroke-width="6" stroke-linecap="round" opacity=".6"/>
+
+    <!-- wave (right) -->
+    <g transform="translate(-34 14)">
+    <path d="M250 372
+             C320 368 352 330 360 286
+             C368 240 402 204 446 206
+             C480 208 500 236 490 262
+             C482 282 456 284 448 268
+             C440 254 452 240 464 246
+             C446 236 420 250 414 282
+             C406 324 440 360 560 362
+             L560 512 L250 512 Z" fill="#00537A"/>
+    <path d="M362 284 C370 240 404 208 446 208 C478 210 498 236 490 262 C482 282 456 284 448 268 C442 256 452 242 464 246"
+          fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M388 316 C384 290 394 266 412 254" fill="none" stroke="#A8E8F9" stroke-width="6" stroke-linecap="round" opacity=".7"/>
+    </g>
+
+    <!-- sand island (bottom) -->
+    <path d="M40 392 C90 336 220 326 330 360 C362 370 380 384 392 398 C300 410 140 412 40 392 Z" fill="#FFBA42"/>
+    <path d="M70 388 C140 372 250 372 360 392" fill="none" stroke="#F5A201" stroke-width="5" stroke-linecap="round" opacity=".7"/>
+
+    <!-- palm tree (left) -->
+    <path d="M168 378 C164 336 154 300 138 266 L152 262 C170 298 182 334 184 378 Z" fill="#013C58"/>
+    <g stroke="#A8E8F9" stroke-width="3" opacity=".5">
+      <line x1="164" y1="350" x2="180" y2="348"/>
+      <line x1="158" y1="320" x2="174" y2="316"/>
+      <line x1="150" y1="292" x2="165" y2="287"/>
+    </g>
+    <g transform="translate(145 262) scale(.82)" fill="#0B6E4F">
+      <use href="#frond" transform="rotate(-200) scale(1 -1)"/>
+      <use href="#frond" transform="rotate(-150) scale(.95 -.95)"/>
+      <use href="#frond" transform="rotate(-105) scale(.8 -.8)"/>
+      <use href="#frond" transform="rotate(-60) scale(.9)"/>
+      <use href="#frond" transform="rotate(-15)"/>
+      <use href="#frond" transform="rotate(25) scale(.9)"/>
+    </g>
+    <g fill="#7A4A12">
+      <circle cx="150" cy="271" r="6"/>
+      <circle cx="140" cy="274" r="5"/>
+    </g>
+  </g>
+
+  <!-- wordmark arched over the sun -->
+  <text font-family="'Poppins','Montserrat','Segoe UI',Arial,sans-serif" font-weight="800" font-size="46"
+        letter-spacing="4" fill="#013C58">
+    <textPath href="#arc" startOffset="50%" text-anchor="middle">RESORTIFY</textPath>
+  </text>
+
+  <circle cx="256" cy="256" r="240" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+</svg>

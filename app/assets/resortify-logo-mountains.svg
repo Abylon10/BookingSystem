@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 400" width="512" height="400">
+  <title>Resortify</title>
+  <!-- three peaks; the centre one sits in front, cut out from the others by a white outline -->
+  <path d="M36 300 L150 148 L264 300 Z" fill="#000"/>
+  <path d="M248 300 L362 168 L476 300 Z" fill="#000"/>
+  <path d="M114 300 L256 58 L398 300 Z" fill="#FFF"/>
+  <path d="M130 300 L256 84 L382 300 Z" fill="#000"/>
+  <!-- snow line on the centre peak -->
+  <path d="M212 160 L236 178 L256 160 L276 178 L300 160" fill="none" stroke="#FFF" stroke-width="10" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <!-- base line -->
+  <rect x="36" y="300" width="440" height="10" fill="#000"/>
+  <text x="256" y="368" text-anchor="middle" font-family="'Poppins','Montserrat','Segoe UI',Arial,sans-serif"
+        font-weight="800" font-size="48" letter-spacing="10" fill="#000">RESORTIFY</text>
+</svg>
