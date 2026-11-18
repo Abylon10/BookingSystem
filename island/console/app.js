@@ -32,6 +32,8 @@ let me = null;
 try { token = localStorage.getItem('desk-token'); me = JSON.parse(localStorage.getItem('desk-me') || 'null'); } catch { /* storage blocked */ }
 if (!token || !me) location.replace('login.html');
 const isAdmin = me?.role === 'node_admin';
+// This console is the island admin's page; receptionists have their own.
+if (me && !isAdmin) location.replace('desk.html');
 
 // Calls the island API with the session token. 401 = session over -> sign in again.
 async function api(path, body) {

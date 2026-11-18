@@ -1,0 +1,130 @@
+<!doctype html>
+<!--
+  island/console/desk.html
+  The receptionist's own page (sign-in sends receptionists here; the island
+  admin's console is index.html). Made for a front-desk counter: no admin
+  menus, big buttons, today's work first.
+    Arrivals  : today's guests as cards with the ID to check and Check in
+    Walk-in   : book a package or build your own, paid at the desk
+    Services  : switch a service off / on for a date
+    Bookings  : all bookings on this island (view only)
+  Behaviour in desk.js; shared colours and day/night in style.css.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Front Desk</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Day / night: apply the saved theme before the page paints -->
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('desk-theme') || 'light'; } catch (e) {}</script>
+</head>
+<body class="desk-page">
+  <!-- Booking details / ID check dialog -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="m-title"></h2><button class="icon" id="m-close" title="Close">✕</button></div>
+      <div id="m-body"></div>
+      <div class="modal-actions" id="m-actions"></div>
+    </div>
+  </div>
+
+  <!-- Header: island, link status, date, admin link (admins only), theme, user -->
+  <header class="desk-top">
+    <div class="brand"><span class="logo">⛵</span><div><b id="island-name">Island</b><small>Front desk</small></div></div>
+    <p class="sync" id="sync-status"><span class="dot"></span>Checking link…</p>
+    <div class="desk-right">
+      <span class="desk-date" id="today"></span>
+      <a class="link-btn hidden" id="admin-link" href="index.html">Admin console</a>
+      <button class="theme-btn" id="theme-btn" type="button" title="Day / night">☾</button>
+      <span class="avatar" id="avatar">?</span>
+      <button class="ghost" id="logout">Sign out</button>
+    </div>
+  </header>
+
+  <main class="desk-main">
+    <!-- Today at a glance -->
+    <section class="desk-kpis">
+      <div class="dk"><b id="k-left">0</b><span>still to arrive</span></div>
+      <div class="dk ok"><b id="k-in">0</b><span>checked in</span></div>
+      <div class="dk accent"><b id="k-walk">0</b><span>walk-ins today</span></div>
+      <div class="dk"><b id="k-online">0</b><span>online today</span></div>
+      <div class="dk warn"><b id="k-off">0</b><span>services off</span></div>
+    </section>
+
+    <!-- Big tab buttons -->
+    <nav class="desk-tabs" id="desk-tabs">
+      <button data-tab="arrivals" class="active"><span>✓</span>Arrivals</button>
+      <button data-tab="walkin"><span>＋</span>Walk-in</button>
+      <button data-tab="services"><span>◐</span>Services</button>
+      <button data-tab="bookings"><span>☰</span>Bookings</button>
+    </nav>
+
+    <!-- ===== Arrivals: find the guest, check the ID, check in ===== -->
+    <section id="arrivals" class="tab">
+      <div class="desk-bar">
+        <form id="find" class="search big"><input id="q" placeholder="Find a guest: reference (MRP-7F3K2) or name" autocomplete="off"><button type="submit" class="icon" title="Search">⌕</button></form>
+        <input type="date" id="arr-day" title="Arrivals on">
+        <div class="src-filter" id="arr-src">
+          <label class="src-box on-src"><input type="checkbox" value="ONLINE" checked><span>Online</span></label>
+          <label class="src-box walk-src"><input type="checkbox" value="WALKIN" checked><span>Walk-in</span></label>
+        </div>
+      </div>
+      <p class="desk-hint" id="arr-title">Today's arrivals</p>
+      <div id="arr-cards" class="arr-cards"></div>
+    </section>
+
+    <!-- ===== Walk-in: package or build your own, paid at the desk ===== -->
+    <section id="walkin" class="tab hidden">
+      <div class="card">
+        <div class="seg" id="w-mode">
+          <button type="button" data-mode="package" class="on">Package</button>
+          <button type="button" data-mode="custom">Build your own</button>
+        </div>
+        <form id="walkin-form" class="grid2">
+          <label>Date<input id="w-day" type="date" required></label>
+          <label>Guests<input id="w-guests" type="number" min="1" value="2" required></label>
+          <label class="w-package">Package<select id="w-package"></select></label>
+          <label class="w-package">Extra days <span class="hint">(each adds the extra-day fee)</span><input id="w-extra" type="number" min="0" max="14" value="0"></label>
+          <label class="w-custom hidden">Days<input id="w-days" type="number" min="1" max="14" value="1"></label>
+          <div class="span2 w-custom hidden"><p class="label">Services</p><div id="w-services" class="svc-pick"></div></div>
+          <label>Guest name<input id="w-name" required></label>
+          <label>Phone (optional)<input id="w-phone"></label>
+          <label>ID type<select id="w-idtype"><option>PhilSys ID</option><option>Passport</option><option>Driver's License</option><option>UMID</option><option>Student ID</option></select></label>
+          <label>ID last 4 digits<input id="w-last4" pattern="\d{4}" maxlength="4" required></label>
+          <div class="span2 total-row">
+            <div><span id="w-total" class="price"></span><p id="w-note" class="small error"></p></div>
+            <button type="submit" class="big-btn">Book and collect payment</button>
+          </div>
+        </form>
+        <div id="walkin-result"></div>
+      </div>
+    </section>
+
+    <!-- ===== Services on/off ===== -->
+    <section id="services" class="tab hidden">
+      <div class="desk-bar"><p class="desk-hint">Switch a service off when it can't run (boat down, weather). Packages that need it stop selling for that date.</p><input type="date" id="sv-day"></div>
+      <div class="grid-2">
+        <div class="card"><h2>Services</h2><div id="sv-list" class="checklist"></div><div id="sv-result"></div></div>
+        <div class="card"><h2>Packages on this date</h2><div id="sv-packages" class="pkg-list"></div></div>
+      </div>
+    </section>
+
+    <!-- ===== Bookings (view only) ===== -->
+    <section id="bookings" class="tab hidden">
+      <div class="desk-bar">
+        <p class="desk-hint" id="bk-count">Online and walk-in bookings on this island, newest first. Ask an island admin to cancel or refund.</p>
+        <div class="src-filter" id="bk-src">
+          <label class="src-box on-src"><input type="checkbox" value="ONLINE" checked><span>Online</span></label>
+          <label class="src-box walk-src"><input type="checkbox" value="WALKIN" checked><span>Walk-in</span></label>
+        </div>
+      </div>
+      <div class="card flush">
+        <table><thead><tr><th>Reference</th><th>Source</th><th>Booking</th><th>Dates</th><th>Guests</th><th>Guest</th><th>Total</th><th>Status</th></tr></thead><tbody id="bk-list"></tbody></table>
+      </div>
+    </section>
+  </main>
+
+  <script src="desk.js"></script>
+</body>
+</html>

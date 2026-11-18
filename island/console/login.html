@@ -3,7 +3,8 @@
   island/console/login.html
   Sign-in page of the island console (authentication). After signing in, the
   console (index.html) shows the pages for the account's role (authorization):
-  receptionists get the desk pages, node admins also get management pages.
+  receptionists go to their own page (desk.html), island admins to the full
+  console (index.html).
   Accounts are checked against this island's own staff table, so sign-in
   works while the island is offline. Node admin accounts are created by the
   central admin (central dashboard > Accounts).
@@ -67,7 +68,7 @@
         $('island-title').textContent = s.island.name;
         $('island-id').textContent = s.island.id;
         document.title = `${s.island.name} · Sign in`;
-        if (s.staff) location.replace('index.html');            // still signed in
+        if (s.staff) location.replace(s.staff.role === 'node_admin' ? 'index.html' : 'desk.html'); // still signed in
         // Island photo behind the welcome panel, when img/<island>.png exists.
         const photo = new Image();
         photo.onload = () => {
@@ -93,7 +94,7 @@
         if (!res.ok) throw new Error(data.error);
         localStorage.setItem('desk-token', data.token);
         localStorage.setItem('desk-me', JSON.stringify({ user: data.user, role: data.role }));
-        location.replace('index.html');
+        location.replace(data.role === 'node_admin' ? 'index.html' : 'desk.html'); // each role has its own page
       } catch (err) {
         // TypeError = no answer at all (server not running / wrong address).
         $('login-error').textContent = err instanceof TypeError ? NOT_ISLAND : err.message;

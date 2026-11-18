@@ -1,9 +1,10 @@
 <!doctype html>
 <!--
   island/console/index.html
-  Island console after sign-in (login.html). Pages depend on the role:
-    receptionist : Dashboard, Check-in, Walk-in, Services on/off, Bookings (view)
-    node admin   : the same, plus cancel/refund, Packages & services, Staff
+  Island admin console after sign-in (login.html). Receptionists are sent to
+  their own page, desk.html. Admin pages: Dashboard, Check-in, Walk-in,
+  Services on/off, Bookings (cancel/refund), Packages & services, Staff;
+  "Front desk view" opens the receptionist page.
   The server enforces the same rules (admin-only routes answer 403).
   Behaviour in app.js, colours and layout in style.css (day and night themes).
 -->
@@ -54,6 +55,7 @@
       <header class="topbar">
         <p class="sync" id="sync-status"><span class="dot"></span>Checking link…</p>
         <form id="top-search" class="search"><input id="top-q" placeholder="Find a booking: reference or guest name" autocomplete="off"><button type="submit" class="icon" title="Search">⌕</button></form>
+        <a class="link-btn" href="desk.html" title="The receptionist's page">Front desk view</a>
         <button class="theme-btn" id="theme-btn" type="button" title="Day / night">☾</button>
         <div class="user"><span class="avatar" id="avatar">?</span><span id="who"></span></div>
       </header>

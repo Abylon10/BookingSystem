@@ -309,3 +309,53 @@ tr.click:hover td { background: #f7fafb; }
 :root[data-theme="dark"] button.ghost, :root[data-theme="dark"] button.link { border-color: var(--line); }
 :root[data-theme="dark"] button.link { color: #9fd3df; }
 :root[data-theme="dark"] .login-page { background: var(--page); }
+
+/* ===== Receptionist page (desk.html) ===================================== */
+.desk-page { background: var(--page); }
+.desk-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 12px 24px; background: var(--card, #fff); border-bottom: 1px solid var(--line); }
+.desk-top .brand { border: none; padding: 0; }
+.desk-top .brand b { display: block; font-size: 1.05rem; }
+.desk-top .brand small { color: var(--muted); font-weight: 600; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+.desk-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.desk-date { color: var(--muted); font-size: .9rem; }
+.link-btn { color: var(--primary); font-weight: 600; text-decoration: none; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; }
+.desk-main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 40px; display: grid; gap: 18px; }
+
+/* Today's numbers */
+.desk-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.dk { background: var(--card, #fff); border-radius: 14px; padding: 14px 16px; border-left: 5px solid var(--primary); box-shadow: 0 1px 2px rgba(18, 33, 46, .05); }
+.dk b { display: block; font-size: 1.9rem; line-height: 1.1; color: var(--ink); }
+.dk span { color: var(--muted); font-size: .85rem; }
+.dk.ok { border-left-color: var(--ok); } .dk.accent { border-left-color: var(--accent); } .dk.warn { border-left-color: var(--danger); }
+
+/* Big tab buttons */
+.desk-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.desk-tabs button { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px; border-radius: 14px; font-size: 1.05rem;
+  background: var(--card, #fff); color: var(--ink); border: 1.5px solid var(--line); }
+.desk-tabs button span { font-size: 1.2rem; }
+.desk-tabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Search bar row */
+.desk-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.search.big { flex: 1; min-width: 260px; width: auto; margin-left: 0; padding: 4px 6px 4px 18px; }
+.search.big input { font-size: 1.05rem; padding: 11px 4px; }
+.desk-hint { margin: 0; color: var(--muted); flex: 1; }
+.desk-empty { color: var(--muted); padding: 24px; text-align: center; background: var(--card, #fff); border-radius: 14px; }
+
+/* Arrival cards */
+.arr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.arr-card { background: var(--card, #fff); border-radius: 16px; padding: 16px; display: grid; gap: 8px; border: 1.5px solid var(--line); box-shadow: 0 1px 3px rgba(18, 33, 46, .05); }
+.arr-card.done { opacity: .75; }
+.arr-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.arr-head b { display: block; font-size: 1.05rem; color: var(--ink); }
+.arr-head .ref { color: var(--primary); font-weight: 700; font-size: .85rem; letter-spacing: .04em; }
+.arr-what { margin: 0; font-weight: 600; color: var(--ink); }
+.arr-meta { margin: 0; color: var(--muted); font-size: .9rem; }
+.arr-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 4px; }
+.big-btn { padding: 12px 18px; font-size: 1rem; border-radius: 12px; }
+
+@media (max-width: 900px) {
+  .desk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .desk-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .desk-top, .desk-main { padding-left: 16px; padding-right: 16px; }
+}
