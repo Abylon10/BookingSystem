@@ -163,7 +163,29 @@ export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
       for (const it of p.items) addItem.run(p.id, it.service, it.qty, it.perGuest ? 1 : 0);
     }
   });
+  renameOld(db);
   extendInventory(db, seed.inventoryDays);
+}
+
+// Catalog names that changed in seed.json after islands already had a
+// database. Each rename only applies while the old name is still there, so a
+// name the island admin edited is never overwritten.
+const RENAMES: { table: 'services' | 'packages'; id: string; from: Record<string, string>; to: Record<string, string> }[] = [
+  { table: 'services', id: 'biliran-lagundi-room', from: { name: 'Lagundi Bay Resort room' }, to: { name: 'Chamorita Beach Resort room' } },
+  {
+    table: 'packages', id: 'biliran-lagundi-2d1n',
+    from: { name: 'Lagundi Bay 2D1N + Falls' },
+    to: {
+      name: 'Chamorita Beach Resort 2D1N + Falls', location: 'Chamorita Beach Resort, Biliran',
+      description: 'One night at Chamorita Beach Resort: swimming pools, beachfront cottages and sunset over the water, plus the falls trek and van transfer.',
+    },
+  },
+];
+function renameOld(db: Db): void {
+  for (const r of RENAMES) {
+    const sets = Object.keys(r.to).map((k) => `${k} = ?`).join(', ');
+    db.prepare(`UPDATE ${r.table} SET ${sets} WHERE id = ? AND name = ?`).run(...Object.values(r.to), r.id, r.from.name);
+  }
 }
 
 // Makes sure every service (or just `serviceId`) has an inventory row for

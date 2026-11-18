@@ -13,17 +13,41 @@
 import { Image, type ImageSourcePropType, type StyleProp, type ViewStyle, View } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
-// Package id -> photo.
-const PHOTOS: Record<string, ImageSourcePropType> = {
-  'higatangan-sandbar-day': require('../assets/packages/higatangan-sandbar.png'),
-  'higatangan-escape-2d1n': require('../assets/packages/higatangan-inn.png'),
+// Bundled photos.
+const IMG = {
+  higatanganSandbar: require('../assets/packages/higatangan-sandbar.png'),
+  higatanganInn: require('../assets/packages/higatangan-inn.png'),
+  chamoritaSunset: require('../assets/packages/chamorita-sunset.webp'),
+  chamoritaPool: require('../assets/packages/chamorita-pool.png'),
+  sambawanAerial: require('../assets/packages/sambawan-aerial.png'),
+  sambawanCottages: require('../assets/packages/sambawan-cottages.png'),
+  biliranBridgeAerial: require('../assets/packages/biliran-bridge-aerial.png'),
+  biliranBridge: require('../assets/packages/biliran-bridge.png'),
+};
+
+// Main-interface photos (welcome screen, home header).
+export const HERO_PHOTOS = { welcome: IMG.biliranBridgeAerial as ImageSourcePropType, home: IMG.biliranBridge as ImageSourcePropType };
+
+// Package id -> photos (the first is the cover; more make a gallery).
+const PHOTOS: Record<string, ImageSourcePropType[]> = {
+  'higatangan-sandbar-day': [IMG.higatanganSandbar],
+  'higatangan-escape-2d1n': [IMG.higatanganInn, IMG.higatanganSandbar],
+  'biliran-lagundi-2d1n': [IMG.chamoritaSunset, IMG.chamoritaPool],   // Chamorita Beach Resort
+  'maripipi-sambawan-day': [IMG.sambawanAerial, IMG.sambawanCottages],
+  'maripipi-sambawan-overnight': [IMG.sambawanCottages, IMG.sambawanAerial],
 };
 
 // Island id -> photo, used for that island's other packages (including ones
 // an island admin adds later) and for its build-your-own trips.
 const ISLAND_PHOTOS: Record<string, ImageSourcePropType> = {
-  higatangan: require('../assets/packages/higatangan-sandbar.png'),
+  higatangan: IMG.higatanganSandbar,
+  maripipi: IMG.sambawanAerial,
+  biliran: IMG.biliranBridgeAerial,
 };
+
+// Packages that keep their drawn scene instead of the island photo (no
+// matching photo yet: the falls trek).
+const KEEP_SCENE = new Set(['biliran-falls-day']);
 
 // The four drawn scenes.
 export type SceneKind = 'falls' | 'island' | 'sandbar' | 'sunset';
@@ -37,15 +61,20 @@ export function sceneFor(packageId: string): SceneKind {
   return 'island';
 }
 
-// The photo for a package id or island id: exact package first, then the
+// All photos of a package (or island id): the package's own first, else the
 // island it belongs to (ids start with the island id, e.g. "higatangan-…").
-function photoFor(id: string) {
-  return PHOTOS[id] ?? ISLAND_PHOTOS[id] ?? ISLAND_PHOTOS[id.split('-')[0]];
+export function photosFor(id: string): ImageSourcePropType[] {
+  if (PHOTOS[id]) return PHOTOS[id];
+  if (KEEP_SCENE.has(id)) return [];
+  const island = ISLAND_PHOTOS[id] ?? ISLAND_PHOTOS[id.split('-')[0]];
+  return island ? [island] : [];
 }
+const photoFor = (id: string) => photosFor(id)[0];
 
 // Shows the package photo, or its drawn scene, filling `style`.
-export function PackageImage({ packageId, style }: { packageId: string; style?: StyleProp<ViewStyle> }) {
-  const photo = photoFor(packageId);
+// `photo` picks a specific gallery photo instead of the cover.
+export function PackageImage({ packageId, style, photo: chosen }: { packageId: string; style?: StyleProp<ViewStyle>; photo?: ImageSourcePropType }) {
+  const photo = chosen ?? photoFor(packageId);
   return (
     <View style={[{ overflow: 'hidden', backgroundColor: '#A8E8F9' }, style]}>
       {photo

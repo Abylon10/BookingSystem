@@ -14,9 +14,9 @@
  * are always what the island can actually sell.
  */
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { packageCalendar, searchPackages, type Package, type Trip } from '../api';
-import { PackageImage } from '../scene';
+import { PackageImage, photosFor } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
 import { addDays, Button, daysBetween, ErrorBox, Ionicons, isoDay, RangeSheet, RoundButton, Stepper, tripDates, type DayStatus } from '../ui';
 
@@ -38,6 +38,9 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   const [calendar, setCalendar] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, { status: DayStatus; note: string | null }>>({});
   const [more, setMore] = useState(false);
+  // Package photos (gallery) and the one on screen.
+  const photos = photosFor(initial.id);
+  const [photoIndex, setPhotoIndex] = useState(0);
 
   // Shortest booking in calendar days: a day trip = 1 day (up to 12 h), a
   // 2D1N = 2 days. The chosen end day decides the extra days.
@@ -82,13 +85,23 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
   return (
     <View style={st.screen}>
       <ScrollView contentContainerStyle={{ paddingBottom: 140 }} bounces={false}>
-        {/* Hero picture with back button, island tag and price tag */}
+        {/* Hero picture with back button, island tag, photo thumbnails and price tag */}
         <View style={st.hero}>
-          <PackageImage packageId={pkg.id} style={StyleSheet.absoluteFill} />
+          <PackageImage packageId={pkg.id} photo={photos[photoIndex]} style={StyleSheet.absoluteFill} />
           <View style={st.heroTop}>
             <RoundButton icon="chevron-back" onPress={onBack} />
             <View style={st.islandTag}><Text style={st.islandTagText}>{pkg.island_name}</Text></View>
           </View>
+          {/* Gallery: tap a thumbnail to show that photo (reference design) */}
+          {photos.length > 1 && (
+            <View style={st.thumbs}>
+              {photos.map((p, i) => (
+                <Pressable key={i} onPress={() => setPhotoIndex(i)} style={[st.thumb, i === photoIndex && st.thumbOn]}>
+                  <Image source={p} style={st.thumbImg} />
+                </Pressable>
+              ))}
+            </View>
+          )}
           <View style={st.priceTag}>
             <Text style={st.priceText}>{peso(pkg.price_php)}</Text>
             <Text style={st.priceUnit}>{perGuest ? 'per guest' : 'per package'}</Text>
@@ -197,6 +210,10 @@ const st = StyleSheet.create({
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 52, paddingHorizontal: space.md },
   islandTag: { backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
   islandTagText: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  thumbs: { position: 'absolute', left: space.md, top: 110, gap: 10 },
+  thumb: { width: 54, height: 54, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden' },
+  thumbOn: { borderColor: '#fff', borderWidth: 3 },
+  thumbImg: { width: '100%', height: '100%' },
   priceTag: { position: 'absolute', right: space.md, bottom: 44, backgroundColor: colors.accent, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', ...shadow },
   priceText: { color: colors.ink, fontWeight: '800', fontSize: 18 },
   priceUnit: { color: colors.ink, fontSize: 11 },

@@ -7,7 +7,7 @@
       "name": "Biliran Mainland",
       "prefix": "BIL",
       "services": [
-        { "id": "biliran-lagundi-room", "kind": "room", "name": "Lagundi Bay Resort room", "capacity": 10, "pricePhp": 2500, "unit": "room" },
+        { "id": "biliran-lagundi-room", "kind": "room", "name": "Chamorita Beach Resort room", "capacity": 10, "pricePhp": 2500, "unit": "room" },
         { "id": "biliran-falls-trek", "kind": "tour", "name": "Tinago & Ulan-Ulan Falls trek", "capacity": 20, "pricePhp": 600, "unit": "person" },
         { "id": "biliran-van", "kind": "transfer", "name": "Van transfer", "capacity": 12, "pricePhp": 350, "unit": "person" }
       ],
@@ -29,9 +29,9 @@
         },
         {
           "id": "biliran-lagundi-2d1n",
-          "name": "Lagundi Bay 2D1N + Falls",
-          "location": "Almeria and Caibiran, Biliran",
-          "description": "One night in a beachfront room at Lagundi Bay plus the falls trek and van transfer.",
+          "name": "Chamorita Beach Resort 2D1N + Falls",
+          "location": "Chamorita Beach Resort, Biliran",
+          "description": "One night at Chamorita Beach Resort: swimming pools, beachfront cottages and sunset over the water, plus the falls trek and van transfer.",
           "pricePhp": 4200,
           "pricing": "per_package",
           "nights": 1,

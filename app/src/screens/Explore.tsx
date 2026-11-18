@@ -11,9 +11,9 @@
  * because only the island that owns the inventory can sell them.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { searchPackages, type IslandStatus, type Package, type SearchResult } from '../api';
-import { PackageImage } from '../scene';
+import { HERO_PHOTOS, PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
 import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle } from '../ui';
 
@@ -77,11 +77,20 @@ export function Explore({ day, onDay, onOpen, onBuild }: {
       refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={load} tintColor={colors.primary} />}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Header: location pill, greeting, search box, date */}
+      {/* Header: Biliran photo with the Resortify logo, location and greeting,
+          then the search box and arrival date */}
       <View style={st.header}>
-        <View style={st.locPill}>
-          <Ionicons name="location" size={15} color={colors.primary} />
-          <Text style={st.locText}>Biliran Province</Text>
+        <Image source={HERO_PHOTOS.home} style={st.headerPhoto} resizeMode="cover" />
+        <View style={st.headerShade} />
+        <View style={st.topRow}>
+          <View style={st.brand}>
+            <Image source={require('../../assets/resortify-logo.png')} style={st.logo} />
+            <Text style={st.brandName}>Resortify</Text>
+          </View>
+          <View style={st.locPill}>
+            <Ionicons name="location" size={14} color={colors.primary} />
+            <Text style={st.locText}>Biliran Province</Text>
+          </View>
         </View>
         <Text style={st.hello}>Discover your</Text>
         <Text style={st.helloBold}>perfect island trip</Text>
@@ -223,11 +232,17 @@ const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
 
   // Header block on a light sky background with a rounded bottom
-  header: { backgroundColor: colors.skySoft, paddingTop: 56, paddingHorizontal: space.md, paddingBottom: space.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, gap: 6 },
-  locPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 7, marginBottom: space.sm, ...shadow, shadowOpacity: 0.06 },
-  locText: { color: colors.ink, fontWeight: '700', fontSize: 13 },
-  hello: { color: colors.muted, fontSize: 22 },
-  helloBold: { color: colors.ink, fontSize: 26, fontWeight: '800', marginTop: -4 },
+  header: { backgroundColor: colors.ink, paddingTop: 52, paddingHorizontal: space.md, paddingBottom: space.lg, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, gap: 6, overflow: 'hidden' },
+  headerPhoto: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+  headerShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(1, 60, 88, 0.45)' },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingLeft: 3, paddingRight: 12, paddingVertical: 3 },
+  logo: { width: 32, height: 32, borderRadius: 16 },
+  brandName: { color: colors.ink, fontWeight: '800', fontSize: 15, letterSpacing: 0.5 },
+  locPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 7 },
+  locText: { color: colors.ink, fontWeight: '700', fontSize: 12 },
+  hello: { color: '#E3F6FC', fontSize: 22 },
+  helloBold: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: -4 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 52, marginTop: space.md, ...shadow, shadowOpacity: 0.07 },
   searchInput: { flex: 1, fontSize: 15, color: colors.ink },
   dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: radius.pill, paddingHorizontal: 16, height: 54, marginTop: space.sm },
