@@ -107,6 +107,11 @@ export function openDb(islandId: string): Db {
     );
 
     -- Written in the same transaction as the change it describes; drained to central.
+    -- One-time catalog changes already applied to this database (see oneTime()).
+    CREATE TABLE IF NOT EXISTS applied_changes (
+      name TEXT PRIMARY KEY, at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS outbox (
       event_id TEXT PRIMARY KEY, type TEXT NOT NULL, booking_id TEXT,
       payload TEXT NOT NULL, created_at INTEGER NOT NULL, sent_at INTEGER
@@ -164,6 +169,11 @@ export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
     }
   });
   renameOld(db);
+  oneTime(db, 'retire-day-trips-2026-11', () => {
+    // Only the three resort stays are sold now; the day trips are taken off
+    // sale (kept in the database so their past bookings keep their names).
+    db.prepare("UPDATE packages SET active = 0 WHERE id IN ('biliran-falls-day', 'maripipi-sambawan-day', 'higatangan-sandbar-day')").run();
+  });
   extendInventory(db, seed.inventoryDays);
 }
 
@@ -181,6 +191,16 @@ const RENAMES: { table: 'services' | 'packages'; id: string; from: Record<string
     },
   },
 ];
+// Runs a catalog change once per database (recorded in applied_changes), so
+// an island admin who later turns something back on is not overruled.
+function oneTime(db: Db, name: string, change: () => void): void {
+  if (db.prepare('SELECT 1 FROM applied_changes WHERE name = ?').get(name)) return;
+  transaction(db, () => {
+    change();
+    db.prepare('INSERT INTO applied_changes VALUES (?, ?)').run(name, Date.now());
+  });
+}
+
 function renameOld(db: Db): void {
   for (const r of RENAMES) {
     const sets = Object.keys(r.to).map((k) => `${k} = ?`).join(', ');

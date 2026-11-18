@@ -13,21 +13,6 @@
       ],
       "packages": [
         {
-          "id": "biliran-falls-day",
-          "name": "Falls Day Trek",
-          "location": "Caibiran, Biliran",
-          "description": "Guided trek to Tinago Falls and Ulan-Ulan Falls with a dip at Mainit Hot Spring and van transfer.",
-          "pricePhp": 950,
-          "pricing": "per_guest",
-          "nights": 0,
-          "maxGuests": 6,
-          "items": [
-            { "service": "biliran-falls-trek", "qty": 1, "perGuest": true },
-            { "service": "biliran-van", "qty": 1, "perGuest": true }
-          ],
-          "extraDayPhp": 500
-        },
-        {
           "id": "biliran-lagundi-2d1n",
           "name": "Chamorita Beach Resort 2D1N + Falls",
           "location": "Chamorita Beach Resort, Biliran",
@@ -56,21 +41,6 @@
       ],
       "packages": [
         {
-          "id": "maripipi-sambawan-day",
-          "name": "Sambawan Day Tour",
-          "location": "Sambawan Islets, Maripipi",
-          "description": "Boat to the Sambawan islets: hilltop viewpoint, coral-garden snorkel and white sand. Lunch included.",
-          "pricePhp": 1500,
-          "pricing": "per_guest",
-          "nights": 0,
-          "maxGuests": 8,
-          "items": [
-            { "service": "maripipi-sambawan-hopping", "qty": 1, "perGuest": true },
-            { "service": "maripipi-boat", "qty": 1, "perGuest": true }
-          ],
-          "extraDayPhp": 800
-        },
-        {
           "id": "maripipi-sambawan-overnight",
           "name": "Sambawan Overnight",
           "location": "Maripipi, Biliran",
@@ -98,21 +68,6 @@
         { "id": "higatangan-pumpboat", "kind": "boat", "name": "Pump boat from Naval", "capacity": 14, "pricePhp": 300, "unit": "person" }
       ],
       "packages": [
-        {
-          "id": "higatangan-sandbar-day",
-          "name": "Sandbar Day Trip",
-          "location": "Higatangan, Naval, Biliran",
-          "description": "Pump boat from Naval, limestone rock formations, island viewpoint and a swim at the sandbar.",
-          "pricePhp": 800,
-          "pricing": "per_guest",
-          "nights": 0,
-          "maxGuests": 8,
-          "items": [
-            { "service": "higatangan-rock-tour", "qty": 1, "perGuest": true },
-            { "service": "higatangan-pumpboat", "qty": 1, "perGuest": true }
-          ],
-          "extraDayPhp": 450
-        },
         {
           "id": "higatangan-escape-2d1n",
           "name": "Higatangan Escape 2D1N",
