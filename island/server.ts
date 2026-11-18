@@ -431,9 +431,12 @@ function newSession(user: string, role: string) {
   return { token: `${user}.${role}.${exp}.${signSession(user, role, exp)}`, user, role };
 }
 function readSession(req: express.Request): { user: string; role: string } | null {
-  const [user, role, expText, sig] = (req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').split('.');
+  // Read from the right: usernames may themselves contain dots ("mrp.admin").
+  const parts = (req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').split('.');
+  const [sig, expText, role] = [parts.pop() ?? '', parts.pop() ?? '', parts.pop() ?? ''];
+  const user = parts.join('.');
   const exp = Number(expText);
-  if (!user || !sig || !(exp > Date.now())) return null;
+  if (!user || !role || !sig || !(exp > Date.now())) return null;
   const expected = Buffer.from(signSession(user, role, exp), 'hex');
   const given = Buffer.from(sig, 'hex');
   return given.length === expected.length && timingSafeEqual(given, expected) ? { user, role } : null;

@@ -5,11 +5,9 @@
  *
  *   Welcome (first launch only)
  *      │ get started
- *   Explore ──tap package──▶ PackageDetail ──book now──┐
- *      │                    (guests, dates, extra days)│
- *      └──build your own──▶ BuildTrip ──continue───────┤
- *                           (services checklist)       ▼
- *                                   GuestForm ──reserve (HOLD)──▶ Payment ──pay──▶ Confirmation
+ *   Explore ──tap──▶ PackageDetail ──book now──▶ GuestForm ──reserve (HOLD)──▶ Payment ──pay──▶ Confirmation
+ *                    (Package or Build your own: guests, dates, extra days
+ *                     or the island's services checklist)
  *
  *   My trips (tab)  : list + calendar timeline ──tap──▶ Confirmation
  *   Account (tab)   : Google sign-in
@@ -21,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Booking, IslandStatus, Package, Trip } from './src/api';
+import type { Booking, Package, Trip } from './src/api';
 import { useAccount } from './src/auth';
 import { saveBooking } from './src/storage';
 import { colors, shadow } from './src/theme';
@@ -29,7 +27,6 @@ import { Ionicons, isoDay } from './src/ui';
 import { Welcome } from './src/screens/Welcome';
 import { Explore } from './src/screens/Explore';
 import { PackageDetail } from './src/screens/PackageDetail';
-import { BuildTrip } from './src/screens/BuildTrip';
 import { GuestForm } from './src/screens/GuestForm';
 import { Payment } from './src/screens/Payment';
 import { Confirmation } from './src/screens/Confirmation';
@@ -43,7 +40,6 @@ type Route =
   | { name: 'welcome' }
   | { name: Tab }
   | { name: 'package'; pkg: Package }
-  | { name: 'build'; island: IslandStatus }
   | { name: 'form'; trip: Trip; back: Route }
   | { name: 'pay'; booking: Booking }
   | { name: 'confirmed'; booking: Booking; justPaid: boolean; from: Tab };
@@ -81,16 +77,11 @@ export default function App() {
       break;
     case 'explore':
       screen = (
-        <Explore day={day} onDay={setDay}
-          onOpen={(pkg) => setRoute({ name: 'package', pkg })}
-          onBuild={(island) => setRoute({ name: 'build', island })} />
+        <Explore day={day} onDay={setDay} onOpen={(pkg) => setRoute({ name: 'package', pkg })} />
       );
       break;
     case 'package':
       screen = <PackageDetail pkg={route.pkg} onBack={() => setRoute({ name: 'explore' })} onBook={(trip) => setRoute({ name: 'form', trip, back: route })} />;
-      break;
-    case 'build':
-      screen = <BuildTrip island={route.island} startDay={day} onBack={() => setRoute({ name: 'explore' })} onContinue={(trip) => setRoute({ name: 'form', trip, back: route })} />;
       break;
     case 'form':
       screen = (

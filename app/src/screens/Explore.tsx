@@ -2,9 +2,9 @@
  * app/src/screens/Explore.tsx
  *
  * Home screen. Pick a date (calendar sheet), filter by island or search,
- * then browse: day trips as big picture cards, island stays as a list, and
- * "Build your own trip" per island (services checklist). The number of
- * guests is chosen after tapping a package or an island.
+ * then browse: day trips as big picture cards and island stays as a list.
+ * Tapping one opens its page, where the guest picks the package or builds
+ * their own trip from that island's services checklist, and the guests.
  *
  * Central asks the three islands IN PARALLEL; island chips show a green/red
  * dot for online/offline. An offline island's packages are not shown,
@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { searchPackages, type IslandStatus, type Package, type SearchResult } from '../api';
+import { searchPackages, type Package, type SearchResult } from '../api';
 import { HERO_PHOTOS, PackageImage } from '../scene';
 import { colors, peso, radius, shadow, space } from '../theme';
 import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, SectionTitle } from '../ui';
@@ -21,11 +21,10 @@ import { addDays, DateSheet, ErrorBox, Ionicons, isoDay, Pills, prettyDay, Secti
 const TODAY = isoDay(new Date());
 const LAST_DAY = addDays(TODAY, 59);
 
-export function Explore({ day, onDay, onOpen, onBuild }: {
+export function Explore({ day, onDay, onOpen }: {
   day: string;
   onDay: (day: string) => void;
   onOpen: (p: Package) => void;
-  onBuild: (island: IslandStatus) => void;
 }) {
   // Search result, error text, loading flag, filters, calendar sheet.
   const [data, setData] = useState<SearchResult | null>(null);
@@ -68,7 +67,6 @@ export function Explore({ day, onDay, onOpen, onBuild }: {
   const islands = data?.islands ?? [];
   const chipIds = ['all', ...islands.map((i) => i.id)];
   const offline = islands.filter((i) => i.status === 'offline');
-  const buildable = islands.filter((i) => i.status === 'online' && (island === 'all' || i.id === island));
 
   return (
     <ScrollView
@@ -150,27 +148,6 @@ export function Explore({ day, onDay, onOpen, onBuild }: {
             <SectionTitle title="Island stays" note={`${stays.length} found`} />
             <View style={{ gap: space.md }}>
               {stays.map((p) => <RowCard key={p.id} p={p} onPress={() => onOpen(p)} />)}
-            </View>
-          </>
-        )}
-
-        {/* Build your own trip from an island's services checklist */}
-        {buildable.length > 0 && (
-          <>
-            <SectionTitle title="Build your own trip" note="Pick services" />
-            <View style={{ gap: space.sm }}>
-              {buildable.map((i) => (
-                <Pressable key={i.id} onPress={() => onBuild(i)} style={({ pressed }) => [st.build, pressed && { opacity: 0.9 }]}>
-                  <View style={st.buildIcon}><Ionicons name="options-outline" size={22} color={colors.ink} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={st.rowName}>{i.name}</Text>
-                    <Text style={st.rowMeta}>
-                      {(data?.services ?? []).filter((s) => s.island_id === i.id).map((s) => s.name).join(' · ') || 'Choose rooms, tours and boats'}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-                </Pressable>
-              ))}
             </View>
           </>
         )}
@@ -272,9 +249,6 @@ const st = StyleSheet.create({
   rowOff: { color: colors.danger, fontSize: 12, fontWeight: '700' },
   rowPrice: { color: colors.primary, fontSize: 16, fontWeight: '800' },
 
-  // Build-your-own island rows
-  build: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: radius.md, padding: 14, borderWidth: 1.5, borderColor: colors.sky, borderStyle: 'dashed' },
-  buildIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.sun, alignItems: 'center', justifyContent: 'center' },
 
   empty: { alignItems: 'center', gap: 8, marginTop: space.lg },
   emptyText: { color: colors.muted, textAlign: 'center' },
