@@ -259,7 +259,11 @@ export function mountAdmin(app: express.Express, { sb, secret, search, ask, isla
         const r = await ask<{ staff: unknown[] }>(i.id, 'ListStaff', {}, 5000);
         return { ...i, online: true, staff: r.staff };
       } catch (err) {
-        return { ...i, online: false, error: (err as Error).message, staff: [] };
+        // Linked but the island doesn't know this request: it runs an older
+        // version (needs git pull + restart), which is not the same as offline.
+        const text = (err as Error).message;
+        const outdated = i.linked && /no handler|is not a function|UNIMPLEMENTED/i.test(`${(err as { code?: string }).code ?? ''} ${text}`);
+        return { ...i, online: false, outdated, error: text, staff: [] };
       }
     }));
     res.json({ islands: list });

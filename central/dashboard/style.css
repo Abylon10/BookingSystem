@@ -391,3 +391,4 @@ td.ref { font-weight: 700; letter-spacing: .03em; }
 :root[data-theme="light"] .filters input, :root[data-theme="light"] .filters select,
 :root[data-theme="light"] .acc-form input, :root[data-theme="light"] .acc-form select,
 :root[data-theme="light"] .login-card input, :root[data-theme="light"] .bench-controls select { background: #fff; color: var(--text); color-scheme: light; }
+.dot.warn { background: var(--accent); box-shadow: 0 0 0 5px rgba(234, 153, 64, .18); }

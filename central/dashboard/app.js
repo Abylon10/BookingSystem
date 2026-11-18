@@ -233,6 +233,12 @@ function islandCards(islands) {
   }).join('');
 }
 
+// Why an island can't answer account requests: offline, or linked but
+// running an older version (needs git pull + restart on its laptop).
+const notReady = (i) => (i.outdated
+  ? '<em class="warn-text">linked, but running an older version: git pull, npm install and restart it</em>'
+  : 'offline: accounts can be managed when it reconnects');
+
 // Utilisation bar row.
 const utilRow = (label, pct, note = '') => `<div class="util"><div class="util-top"><b>${esc(label)}</b><span>${pct}%</span></div>
   <div class="util-bar"><i style="width:${Math.min(100, pct)}%"></i></div>${note ? `<small>${note}</small>` : ''}</div>`;
@@ -272,7 +278,7 @@ async function loadDashboard() {
       const admins = i.staff.filter((u) => u.role === 'node_admin').length;
       const desk = i.staff.filter((u) => u.role === 'receptionist').length;
       return `<div class="acc-sum"><span class="dot ${i.online ? 'on' : 'off'}"></span><b>${esc(i.name)}</b>
-        <span>${i.online ? `${admins} admin · ${desk} receptionist${desk === 1 ? '' : 's'}${admins ? '' : ' · <em class="warn-text">needs an admin</em>'}` : 'offline'}</span></div>`;
+        <span>${i.online ? `${admins} admin · ${desk} receptionist${desk === 1 ? '' : 's'}${admins ? '' : ' · <em class="warn-text">needs an admin</em>'}` : i.outdated ? '<em class="warn-text">needs an update (git pull)</em>' : 'offline'}</span></div>`;
     }).join('')
     : '<p class="empty">Accounts not available.</p>';
 
@@ -457,12 +463,12 @@ async function loadAccounts() {
   const r = await admin('/api/admin/accounts');
   // Island picker in the create form (keep the current choice).
   const chosen = $('acc-island').value;
-  $('acc-island').innerHTML = r.islands.map((i) => `<option value="${esc(i.id)}" ${i.online ? '' : 'disabled'}>${esc(i.name)}${i.online ? '' : ' (offline)'}</option>`).join('');
+  $('acc-island').innerHTML = r.islands.map((i) => `<option value="${esc(i.id)}" ${i.online ? '' : 'disabled'}>${esc(i.name)}${i.online ? '' : i.outdated ? ' (needs update)' : ' (offline)'}</option>`).join('');
   if (chosen) $('acc-island').value = chosen;
   $('acc-list').innerHTML = r.islands.map((i) => `
     <div class="acc-island">
-      <div class="acc-head"><span class="dot ${i.online ? 'on' : 'off'}"></span><b>${esc(i.name)}</b>
-        <span class="muted small">${i.online ? `${i.staff.length} account(s)` : 'offline: accounts can be managed when it reconnects'}</span></div>
+      <div class="acc-head"><span class="dot ${i.online ? 'on' : i.outdated ? 'warn' : 'off'}"></span><b>${esc(i.name)}</b>
+        <span class="muted small">${i.online ? `${i.staff.length} account(s)` : notReady(i)}</span></div>
       ${i.staff.length ? `<table class="data"><tbody>${i.staff.map((u) => `<tr>
         <td>${esc(u.username)}</td><td>${u.role === 'node_admin' ? '<span class="tag on">Island admin</span>' : '<span class="tag walk">Receptionist</span>'}</td>
         <td>${u.active ? 'Active' : '<span class="muted">Disabled</span>'}</td>
