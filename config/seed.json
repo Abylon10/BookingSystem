@@ -9,7 +9,8 @@
       "services": [
         { "id": "biliran-lagundi-room", "kind": "room", "name": "Chamorita Beach Resort room", "capacity": 10, "pricePhp": 2500, "unit": "room" },
         { "id": "biliran-falls-trek", "kind": "tour", "name": "Tinago & Ulan-Ulan Falls trek", "capacity": 20, "pricePhp": 600, "unit": "person" },
-        { "id": "biliran-van", "kind": "transfer", "name": "Van transfer", "capacity": 12, "pricePhp": 350, "unit": "person" }
+        { "id": "biliran-van", "kind": "transfer", "name": "Van transfer", "capacity": 12, "pricePhp": 350, "unit": "person" },
+        { "id": "biliran-sampao-terraces", "kind": "tour", "name": "Sampao Rice Terraces tour", "capacity": 15, "pricePhp": 450, "unit": "person" }
       ],
       "packages": [
         {
@@ -38,7 +39,8 @@
       "services": [
         { "id": "maripipi-dagami-cottage", "kind": "room", "name": "Dagami Reef cottage", "capacity": 8, "pricePhp": 2200, "unit": "room" },
         { "id": "maripipi-sambawan-hopping", "kind": "tour", "name": "Sambawan island hopping", "capacity": 24, "pricePhp": 900, "unit": "person" },
-        { "id": "maripipi-boat", "kind": "boat", "name": "Boat transfer", "capacity": 16, "pricePhp": 500, "unit": "person" }
+        { "id": "maripipi-boat", "kind": "boat", "name": "Boat transfer", "capacity": 16, "pricePhp": 500, "unit": "person" },
+        { "id": "maripipi-reef-snorkel", "kind": "tour", "name": "Sambawan reef snorkeling", "capacity": 20, "pricePhp": 350, "unit": "person" }
       ],
       "packages": [
         {
@@ -67,7 +69,8 @@
       "services": [
         { "id": "higatangan-inn-room", "kind": "room", "name": "Sandbar Inn room", "capacity": 8, "pricePhp": 2000, "unit": "room" },
         { "id": "higatangan-rock-tour", "kind": "tour", "name": "Rock formations and sandbar tour", "capacity": 20, "pricePhp": 500, "unit": "person" },
-        { "id": "higatangan-pumpboat", "kind": "boat", "name": "Pump boat from Naval", "capacity": 14, "pricePhp": 300, "unit": "person" }
+        { "id": "higatangan-pumpboat", "kind": "boat", "name": "Pump boat from Naval", "capacity": 14, "pricePhp": 300, "unit": "person" },
+        { "id": "higatangan-boodle-lunch", "kind": "meal", "name": "Seafood boodle fight lunch", "capacity": 30, "pricePhp": 450, "unit": "person" }
       ],
       "packages": [
         {

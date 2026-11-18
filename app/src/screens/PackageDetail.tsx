@@ -25,6 +25,8 @@ import { addDays, Button, daysBetween, ErrorBox, Ionicons, isoDay, RangeSheet, R
 
 const TODAY = isoDay(new Date());
 const LAST_DAY = addDays(TODAY, 59);
+// Online bookings can add up to one extra day (24 hours) to a package.
+const MAX_ONLINE_EXTRA_HOURS = 24;
 const UNIT = { person: 'per person', room: 'per room', trip: 'per trip' } as const;
 type Mode = 'package' | 'custom';
 
@@ -271,11 +273,11 @@ export function PackageDetail({ pkg: initial, onBack, onBook }: {
             <>
               <Text style={st.h}>Stay longer</Text>
               <View style={st.guestRow}>
-                <Text style={st.hint}>Extra hours after the {pkg.nights ? `${pkg.nights * 24}-hour stay` : '12-hour day'} · {peso(pkg.extra_hour_php ?? 50)} per hour</Text>
-                <Stepper value={extra} min={0} max={72} onChange={setExtra} />
+                <Text style={st.hint}>Up to 24 extra hours after the {pkg.nights ? `${pkg.nights * 24}-hour stay` : '12-hour day'} · {peso(pkg.extra_hour_php ?? 50)} per hour</Text>
+                <Stepper value={extra} min={0} max={MAX_ONLINE_EXTRA_HOURS} onChange={setExtra} />
               </View>
               <View style={st.quick}>
-                {[0, 2, 4, 6, 12].map((h) => (
+                {[0, 2, 6, 12, 24].map((h) => (
                   <Pressable key={h} onPress={() => setExtra(h)} style={[st.quickBtn, extra === h && st.quickOn]}>
                     <Text style={[st.quickText, extra === h && { color: '#fff' }]}>{h ? `+${h} h` : 'None'}</Text>
                   </Pressable>

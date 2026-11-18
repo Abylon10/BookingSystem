@@ -29,7 +29,8 @@ h3 { font-size: .95rem; margin: 18px 0 8px; color: var(--primary); }
 /* Sidebar */
 .sidebar { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 22px 22px; font-weight: 700; font-size: 1.1rem; border-bottom: 1px solid var(--line); }
-.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 1.05rem; }
+/* Resortify logo (round image) next to the island name */
+.logo { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 2px #fff, 0 3px 10px rgba(1, 60, 88, .2); }
 #tabs { display: grid; gap: 2px; padding: 14px 12px; }
 #tabs button { display: flex; align-items: center; gap: 12px; width: 100%; background: transparent; color: var(--muted); font-weight: 500; padding: 10px 12px; border-radius: 10px; text-align: left; }
 #tabs button:hover { background: var(--page); color: var(--ink); }
@@ -257,7 +258,7 @@ tr.click:hover td { background: #f7fafb; }
 .login-art h1 { font-size: 2.6rem; margin-bottom: 10px; }
 .login-art p { color: #d6e6ea; max-width: 420px; line-height: 1.5; }
 .brand.light { border: none; padding: 0; color: #fff; }
-.brand.light .logo { background: rgba(255, 255, 255, .15); }
+.brand.light .logo { box-shadow: 0 0 0 2px rgba(255, 255, 255, .8); }
 .login-form-side { display: grid; place-items: center; padding: 24px; }
 .login-card { width: min(380px, 100%); display: grid; gap: 14px; background: #fff; border-radius: 14px; padding: 28px; box-shadow: 0 8px 30px rgba(18, 33, 46, .08); }
 .login-card h2 { font-size: 1.6rem; margin: 0; }
@@ -309,6 +310,22 @@ tr.click:hover td { background: #f7fafb; }
 :root[data-theme="dark"] button.ghost, :root[data-theme="dark"] button.link { border-color: var(--line); }
 :root[data-theme="dark"] button.link { color: #9fd3df; }
 :root[data-theme="dark"] .login-page { background: var(--page); }
+/* Night fixes: parts that used the text colour (--ink) or white as a background */
+:root[data-theme="dark"] button.pill { background: var(--primary); color: #fff; }
+:root[data-theme="dark"] button.pill:hover { background: #3a8aa0; }
+:root[data-theme="dark"] .c-ink { background: #0a141b; }
+:root[data-theme="dark"] .bars i { background: #26394a; }
+:root[data-theme="dark"] .bars.ink i.now { background: #9fd3df; }
+:root[data-theme="dark"] .ring { background: radial-gradient(closest-side, var(--card) 76%, transparent 78%), conic-gradient(var(--ok) calc(var(--p) * 1%), #26394a 0); }
+:root[data-theme="dark"] button.danger { color: #ec8f78; border-color: #5a3129; }
+:root[data-theme="dark"] button.danger:hover { background: #2a1d1b; }
+:root[data-theme="dark"] .act { border-color: var(--line); color: #b9cad3; }
+:root[data-theme="dark"] .act:disabled { opacity: .35; }
+:root[data-theme="dark"] .badge.CONFIRMED { background: #1d4a57; color: #bfe6ef; }
+:root[data-theme="dark"] .modal-card { border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+:root[data-theme="dark"] .modal-card dt { color: #a9bcc6; }
+:root[data-theme="dark"] .idbox { background: #2b2414; color: #f3dfb8; border: 1px solid #4a3b1c; }
+:root[data-theme="dark"] .modal { background: rgba(0, 0, 0, .6); }
 
 /* ===== Receptionist page (desk.html) ===================================== */
 .desk-page { background: var(--page); }

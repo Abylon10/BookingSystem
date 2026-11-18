@@ -104,6 +104,8 @@ interface Plan {
 
 // Longest stay one booking may cover (keeps a request from locking a season).
 const MAX_DAYS = 14;
+// Most extra hours an online booking may add to a package (one day).
+const MAX_ONLINE_EXTRA_HOURS = 24;
 
 // Extra time asked for, in hours (extraDays from older apps = 24 h each).
 const extraHoursOf = (req: { extraHours?: number; extraDays?: number }) =>
@@ -384,6 +386,11 @@ export function createEngine(db: Db, island: { id: string; name: string; prefix:
         if (guests > pkg.max_guests) throw new BookingError(400, `This package is for up to ${pkg.max_guests} guests`, 'INVALID_ARGUMENT');
         const extraHours = extraHoursOf(req);
         if (extraHours < 0 || extraHours > MAX_DAYS * 24) throw new BookingError(400, `Extra hours must be 0-${MAX_DAYS * 24}`, 'INVALID_ARGUMENT');
+        // Online bookings (the app) may add up to 24 extra hours; longer stays
+        // are arranged at the front desk.
+        if (source === 'ONLINE' && extraHours > MAX_ONLINE_EXTRA_HOURS) {
+          throw new BookingError(400, `Online bookings can add up to ${MAX_ONLINE_EXTRA_HOURS} extra hours`, 'INVALID_ARGUMENT');
+        }
         plan = planPackage(pkg, req.day, guests, extraHours);
       } else {
         const days = Math.floor(Number(req.days) || 1);

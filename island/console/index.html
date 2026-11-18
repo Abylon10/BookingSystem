@@ -12,7 +12,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Island Console</title>
+  <title>Island Console · Resortify</title>
+  <link rel="icon" type="image/png" href="img/resortify-logo.png">
   <link rel="stylesheet" href="style.css">
   <!-- Day / night: apply the saved theme before the page paints -->
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('desk-theme') || 'light'; } catch (e) {}</script>
@@ -30,7 +31,7 @@
   <div class="shell">
     <!-- Sidebar: island, pages for this role, partition switch (admin), sign out -->
     <aside class="sidebar">
-      <div class="brand"><span class="logo">⛵</span><span id="island-name">Island</span></div>
+      <div class="brand"><img class="logo" src="img/resortify-logo.png" alt="Resortify logo"><span id="island-name">Island</span></div>
       <p class="role-tag" id="role-tag">Front desk</p>
       <nav id="tabs">
         <button data-tab="dashboard" class="active"><span class="ico">⌂</span>Dashboard</button>

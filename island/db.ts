@@ -159,13 +159,11 @@ function upgrade(db: Db): void {
 // for the next inventoryDays days.
 export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
   const addService = db.prepare('INSERT OR IGNORE INTO services (id, kind, name, capacity, price_php, unit) VALUES (?, ?, ?, ?, ?, ?)');
-  const fillPrice = db.prepare('UPDATE services SET price_php = ?, unit = ? WHERE id = ? AND price_php = 0');
   const addPackage = db.prepare('INSERT OR IGNORE INTO packages (id, name, location, description, price_php, pricing, nights, max_guests, extra_hour_php, fun_fact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const addItem = db.prepare('INSERT OR IGNORE INTO package_items VALUES (?, ?, ?, ?)');
   transaction(db, () => {
     for (const s of island.services) {
       addService.run(s.id, s.kind, s.name, s.capacity, s.pricePhp, s.unit);
-      fillPrice.run(s.pricePhp, s.unit, s.id);
     }
     for (const p of island.packages) {
       addPackage.run(p.id, p.name, p.location, p.description, p.pricePhp, p.pricing, p.nights, p.maxGuests, p.extraHourPhp ?? 50, p.funFact ?? '');
@@ -183,6 +181,13 @@ export function seedIsland(db: Db, seed: Seed, island: SeedIsland): void {
     // Only the three resort stays are sold now; the day trips are taken off
     // sale (kept in the database so their past bookings keep their names).
     db.prepare("UPDATE packages SET active = 0 WHERE id IN ('biliran-falls-day', 'maripipi-sambawan-day', 'higatangan-sandbar-day')").run();
+  });
+  oneTime(db, 'test-prices-zero-services-2026-11-19', () => {
+    // Booking test, again for services: an earlier start-up step put the
+    // seed prices back on ₱0 services after every restart (removed), and the
+    // new services (Sampao terraces, reef snorkeling, boodle lunch) arrive
+    // with seed prices. Runs once; admins can set prices afterwards.
+    db.prepare('UPDATE services SET price_php = 0').run();
   });
   oneTime(db, 'test-prices-zero-2026-11', () => {
     // Booking test: every package, service and extra-hour fee starts at ₱0.

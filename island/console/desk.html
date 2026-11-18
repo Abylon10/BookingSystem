@@ -14,7 +14,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Front Desk</title>
+  <title>Front Desk · Resortify</title>
+  <link rel="icon" type="image/png" href="img/resortify-logo.png">
   <link rel="stylesheet" href="style.css">
   <!-- Day / night: apply the saved theme before the page paints -->
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('desk-theme') || 'light'; } catch (e) {}</script>
@@ -31,7 +32,7 @@
 
   <!-- Header: island, link status, date, admin link (admins only), theme, user -->
   <header class="desk-top">
-    <div class="brand"><span class="logo">⛵</span><div><b id="island-name">Island</b><small>Front desk</small></div></div>
+    <div class="brand"><img class="logo" src="img/resortify-logo.png" alt="Resortify logo"><div><b id="island-name">Island</b><small>Front desk</small></div></div>
     <p class="sync" id="sync-status"><span class="dot"></span>Checking link…</p>
     <div class="desk-right">
       <span class="desk-date" id="today"></span>
